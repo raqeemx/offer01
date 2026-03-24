@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "webapp",
+  "compatibility_date": "2026-03-23",
+  "pages_build_output_dir": "./dist",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "SUPABASE_URL": "https://zvrzeeclabkvgclnzchb.supabase.co",
+    "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp2cnplZWNsYWJrdmdjbG56Y2hiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQzMDA5NTAsImV4cCI6MjA4OTg3Njk1MH0.VxfPRoom9QS1-chDQkUtczxW0yELkw8KD2CXHu6KLVo"
+  }
+}
