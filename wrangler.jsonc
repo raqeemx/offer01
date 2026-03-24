@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "webapp",
+  "compatibility_date": "2026-03-23",
+  "pages_build_output_dir": "./dist",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "SUPABASE_URL": "YOUR_SUPABASE_URL",
+    "SUPABASE_ANON_KEY": "YOUR_SUPABASE_ANON_KEY"
+  }
+}
