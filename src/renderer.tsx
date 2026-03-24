@@ -12,9 +12,7 @@ export const renderer = jsxRenderer(({ children }) => {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
         <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet" />
-        {/* jsPDF + html2canvas for PDF export */}
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+        {/* jsPDF + html2canvas loaded dynamically in app.js */}
         <script dangerouslySetInnerHTML={{ __html: `
           tailwind.config = {
             theme: {

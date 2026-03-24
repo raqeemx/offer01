@@ -877,36 +877,268 @@ const App = {
     try { await this.api('POST', `/api/quotes/${id}/convert-to-project`, data); this.toast('تم تحويل العرض إلى مشروع بنجاح'); history.pushState(null,'','/projects'); this.route(); } catch(e) { this.toast(e.message,'error'); }
   },
 
-  // ---- PDF Export with Supabase Storage Upload ----
+  // ---- Lazy load external libraries ----
+  async _loadScript(url, check) {
+    if (check()) return;
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = url;
+      s.crossOrigin = 'anonymous';
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error('فشل تحميل المكتبة: ' + url));
+      document.head.appendChild(s);
+    });
+  },
+
+  async _ensurePDFLibs() {
+    await this._loadScript(
+      'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js',
+      () => window.jspdf && window.jspdf.jsPDF
+    );
+    await this._loadScript(
+      'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+      () => typeof html2canvas === 'function'
+    );
+  },
+
+  // ---- PDF Export - Professional Fee Proposal Template ----
   async exportPDF(id) {
     const btn = document.getElementById('pdf-btn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spinner mx-auto" style="width:14px;height:14px;border-width:2px;"></div>'; }
-    this.toast('جارٍ إنشاء PDF...', 'info');
+    this.toast('جارٍ إنشاء عرض الأتعاب PDF...', 'info');
+
     try {
-      // Show PDF header for better export
-      const pdfHeader = document.getElementById('pdf-header');
-      if (pdfHeader) pdfHeader.classList.remove('hidden');
+      // Lazy-load jsPDF + html2canvas
+      await this._ensurePDFLibs();
 
-      const el = document.getElementById('quote-pdf-content');
-      const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false });
+      // Fetch quote data
+      const quote = await this.api('GET', `/api/quotes/${id}`);
+      const items = quote.quote_items || [];
 
-      // Hide PDF header after capture
-      if (pdfHeader) pdfHeader.classList.add('hidden');
+      // Build a hidden printable template in the DOM
+      const printDiv = document.createElement('div');
+      printDiv.id = 'pdf-print-area';
+      printDiv.style.cssText = 'position:fixed;top:-9999px;left:0;width:794px;background:#fff;z-index:-1;font-family:"IBM Plex Sans Arabic",sans-serif;';
+      
+      const clientName = quote.clients?.name || '';
+      const clientCompany = quote.clients?.company || '';
+      const clientEmail = quote.clients?.email || '';
+      const clientPhone = quote.clients?.phone || '';
+      const quoteNumber = quote.quote_number || '';
+      const quoteDate = this.fmtDate(quote.created_at);
+      const validUntil = quote.valid_until ? this.fmtDate(quote.valid_until) : '';
+      const fmtNum = (n) => new Intl.NumberFormat('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
 
-      const { jsPDF } = window.jspdf;
-      const pdf = new jsPDF('p', 'mm', 'a4');
+      // Professional Arabic Fee Proposal Template
+      printDiv.innerHTML = `
+        <div style="padding:0;margin:0;direction:rtl;color:#1a1a2e;">
+          <!-- Top Accent Bar -->
+          <div style="height:8px;background:linear-gradient(90deg,#1e3a8a,#3b82f6,#60a5fa);"></div>
+          
+          <!-- Header Section -->
+          <div style="padding:30px 40px 20px;display:flex;justify-content:space-between;align-items:flex-start;">
+            <div>
+              <h1 style="font-size:28px;font-weight:700;color:#1e3a8a;margin:0;letter-spacing:-0.5px;">عرض أتعاب</h1>
+              <p style="font-size:13px;color:#6b7280;margin:6px 0 0;font-weight:500;">Fee Proposal</p>
+            </div>
+            <div style="text-align:left;">
+              <div style="background:#f0f4ff;border:1px solid #dbeafe;border-radius:8px;padding:12px 16px;">
+                <p style="font-size:11px;color:#6b7280;margin:0;">رقم العرض</p>
+                <p style="font-size:16px;font-weight:700;color:#1e3a8a;margin:4px 0 0;direction:ltr;text-align:center;">${quoteNumber}</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Info Grid -->
+          <div style="padding:0 40px;display:flex;gap:20px;margin-bottom:25px;">
+            <!-- Client Info -->
+            <div style="flex:1;background:#fafbff;border:1px solid #e8ecf4;border-radius:10px;padding:18px 20px;">
+              <p style="font-size:10px;font-weight:700;color:#1e3a8a;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px;border-bottom:2px solid #dbeafe;padding-bottom:8px;">بيانات العميل</p>
+              <p style="font-size:15px;font-weight:700;color:#1a1a2e;margin:0 0 4px;">${clientName}</p>
+              ${clientCompany ? `<p style="font-size:12px;color:#4b5563;margin:0 0 3px;">${clientCompany}</p>` : ''}
+              ${clientEmail ? `<p style="font-size:12px;color:#6b7280;margin:0 0 3px;">${clientEmail}</p>` : ''}
+              ${clientPhone ? `<p style="font-size:12px;color:#6b7280;margin:0;direction:ltr;text-align:right;">${clientPhone}</p>` : ''}
+            </div>
+            <!-- Quote Info -->
+            <div style="flex:1;background:#fafbff;border:1px solid #e8ecf4;border-radius:10px;padding:18px 20px;">
+              <p style="font-size:10px;font-weight:700;color:#1e3a8a;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px;border-bottom:2px solid #dbeafe;padding-bottom:8px;">بيانات العرض</p>
+              <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                <span style="font-size:12px;color:#6b7280;">تاريخ العرض:</span>
+                <span style="font-size:12px;font-weight:600;color:#1a1a2e;">${quoteDate}</span>
+              </div>
+              ${validUntil ? `<div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                <span style="font-size:12px;color:#6b7280;">صالح حتى:</span>
+                <span style="font-size:12px;font-weight:600;color:#1a1a2e;">${validUntil}</span>
+              </div>` : ''}
+              <div style="display:flex;justify-content:space-between;">
+                <span style="font-size:12px;color:#6b7280;">الحالة:</span>
+                <span style="font-size:12px;font-weight:600;color:#1a1a2e;">${{draft:'مسودة',sent:'مُرسل',accepted:'مقبول',rejected:'مرفوض',expired:'منتهي'}[quote.status] || quote.status}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Subject Line -->
+          ${quote.title ? `<div style="padding:0 40px;margin-bottom:20px;">
+            <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;">
+              <p style="font-size:11px;color:#92400e;font-weight:600;margin:0 0 4px;">الموضوع:</p>
+              <p style="font-size:14px;color:#1a1a2e;font-weight:600;margin:0;">${quote.title}</p>
+            </div>
+          </div>` : ''}
+
+          <!-- Items Table -->
+          <div style="padding:0 40px;margin-bottom:20px;">
+            <table style="width:100%;border-collapse:collapse;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb;">
+              <thead>
+                <tr style="background:linear-gradient(135deg,#1e3a8a,#2563eb);">
+                  <th style="padding:12px 16px;text-align:right;font-size:12px;font-weight:700;color:#fff;width:40px;">م</th>
+                  <th style="padding:12px 16px;text-align:right;font-size:12px;font-weight:700;color:#fff;">البند / الوصف</th>
+                  <th style="padding:12px 16px;text-align:center;font-size:12px;font-weight:700;color:#fff;width:70px;">الكمية</th>
+                  <th style="padding:12px 16px;text-align:left;font-size:12px;font-weight:700;color:#fff;width:120px;">سعر الوحدة</th>
+                  <th style="padding:12px 16px;text-align:left;font-size:12px;font-weight:700;color:#fff;width:120px;">المبلغ</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${items.map((item, i) => `
+                  <tr style="background:${i % 2 === 0 ? '#fff' : '#f9fafb'};border-bottom:1px solid #f3f4f6;">
+                    <td style="padding:12px 16px;font-size:13px;color:#6b7280;font-weight:600;text-align:right;">${i + 1}</td>
+                    <td style="padding:12px 16px;font-size:13px;color:#1a1a2e;font-weight:500;text-align:right;">${item.description}</td>
+                    <td style="padding:12px 16px;font-size:13px;color:#4b5563;text-align:center;">${item.quantity}</td>
+                    <td style="padding:12px 16px;font-size:13px;color:#4b5563;text-align:left;direction:ltr;">${fmtNum(item.unit_price)} ر.س</td>
+                    <td style="padding:12px 16px;font-size:13px;color:#1a1a2e;font-weight:700;text-align:left;direction:ltr;">${fmtNum(item.total || item.quantity * item.unit_price)} ر.س</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Total Section -->
+          <div style="padding:0 40px;margin-bottom:25px;">
+            <div style="display:flex;justify-content:flex-start;">
+              <div style="width:320px;border-radius:10px;overflow:hidden;border:1px solid #e5e7eb;">
+                <div style="display:flex;justify-content:space-between;padding:10px 16px;background:#f9fafb;border-bottom:1px solid #f3f4f6;">
+                  <span style="font-size:12px;color:#6b7280;">المجموع الفرعي:</span>
+                  <span style="font-size:13px;font-weight:600;color:#1a1a2e;direction:ltr;">${fmtNum(quote.total)} ر.س</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:10px 16px;background:#f9fafb;border-bottom:1px solid #f3f4f6;">
+                  <span style="font-size:12px;color:#6b7280;">الضريبة (15%):</span>
+                  <span style="font-size:13px;font-weight:600;color:#1a1a2e;direction:ltr;">${fmtNum((quote.total || 0) * 0.15)} ر.س</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:14px 16px;background:linear-gradient(135deg,#1e3a8a,#2563eb);">
+                  <span style="font-size:14px;font-weight:700;color:#fff;">الإجمالي شاملاً الضريبة:</span>
+                  <span style="font-size:18px;font-weight:800;color:#fff;direction:ltr;">${fmtNum((quote.total || 0) * 1.15)} ر.س</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Notes Section -->
+          ${quote.notes ? `<div style="padding:0 40px;margin-bottom:20px;">
+            <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px 16px;">
+              <p style="font-size:11px;font-weight:700;color:#374151;margin:0 0 6px;">ملاحظات:</p>
+              <p style="font-size:12px;color:#4b5563;margin:0;line-height:1.6;">${quote.notes}</p>
+            </div>
+          </div>` : ''}
+
+          <!-- Terms & Conditions -->
+          <div style="padding:0 40px;margin-bottom:25px;">
+            <div style="background:#fafbff;border:1px solid #e8ecf4;border-radius:8px;padding:14px 16px;">
+              <p style="font-size:11px;font-weight:700;color:#1e3a8a;margin:0 0 8px;">الشروط والأحكام:</p>
+              <ul style="margin:0;padding:0 18px;list-style-type:disc;">
+                <li style="font-size:11px;color:#4b5563;margin-bottom:4px;line-height:1.5;">هذا العرض صالح لمدة ${quote.valid_until ? Math.ceil((new Date(quote.valid_until) - new Date(quote.created_at)) / (1000*60*60*24)) + ' يوماً' : '30 يوماً'} من تاريخ الإصدار.</li>
+                <li style="font-size:11px;color:#4b5563;margin-bottom:4px;line-height:1.5;">الأسعار المذكورة بالريال السعودي ولا تشمل ضريبة القيمة المضافة ما لم يُذكر خلاف ذلك.</li>
+                <li style="font-size:11px;color:#4b5563;margin-bottom:4px;line-height:1.5;">يبدأ العمل بعد الموافقة على العرض واستلام الدفعة الأولى.</li>
+                <li style="font-size:11px;color:#4b5563;margin-bottom:0;line-height:1.5;">جميع الحقوق محفوظة.</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Signature Area -->
+          <div style="padding:0 40px;margin-bottom:20px;">
+            <div style="display:flex;gap:40px;">
+              <div style="flex:1;text-align:center;">
+                <p style="font-size:11px;color:#6b7280;font-weight:600;margin:0 0 40px;">توقيع مقدم العرض</p>
+                <div style="border-top:1px solid #d1d5db;padding-top:8px;">
+                  <p style="font-size:11px;color:#9ca3af;margin:0;">الاسم: ...........................</p>
+                  <p style="font-size:11px;color:#9ca3af;margin:4px 0 0;">التاريخ: ...........................</p>
+                </div>
+              </div>
+              <div style="flex:1;text-align:center;">
+                <p style="font-size:11px;color:#6b7280;font-weight:600;margin:0 0 40px;">توقيع العميل (موافقة)</p>
+                <div style="border-top:1px solid #d1d5db;padding-top:8px;">
+                  <p style="font-size:11px;color:#9ca3af;margin:0;">الاسم: ...........................</p>
+                  <p style="font-size:11px;color:#9ca3af;margin:4px 0 0;">التاريخ: ...........................</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Footer -->
+          <div style="margin-top:15px;padding:15px 40px;background:#f8fafc;border-top:2px solid #e5e7eb;text-align:center;">
+            <p style="font-size:10px;color:#9ca3af;margin:0;">تم إنشاء هذا المستند آلياً بواسطة نظام إدارة عروض الأسعار | ${quoteNumber} | ${quoteDate}</p>
+          </div>
+
+          <!-- Bottom Accent Bar -->
+          <div style="height:6px;background:linear-gradient(90deg,#1e3a8a,#3b82f6,#60a5fa);"></div>
+        </div>
+      `;
+
+      document.body.appendChild(printDiv);
+
+      // Wait for fonts to load
+      await new Promise(r => setTimeout(r, 500));
+
+      // Capture with html2canvas (handles Arabic text perfectly via browser rendering)
+      const canvas = await html2canvas(printDiv, {
+        scale: 2.5,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+        width: 794,
+        windowWidth: 794,
+      });
+
+      // Clean up
+      document.body.removeChild(printDiv);
+
+      // Create PDF using jsPDF
+      // Robust jsPDF access - handle different loading scenarios
+      let JsPDF;
+      if (window.jspdf && window.jspdf.jsPDF) {
+        JsPDF = window.jspdf.jsPDF;
+      } else if (window.jsPDF) {
+        JsPDF = window.jsPDF;
+      } else {
+        throw new Error('مكتبة jsPDF غير متوفرة. يرجى تحديث الصفحة والمحاولة مرة أخرى.');
+      }
+
+      const pdf = new JsPDF('p', 'mm', 'a4');
       const imgData = canvas.toDataURL('image/png');
-      const pdfW = pdf.internal.pageSize.getWidth() - 20;
-      const pdfH = (canvas.height * pdfW) / canvas.width;
-      pdf.addImage(imgData, 'PNG', 10, 10, pdfW, pdfH);
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const imgW = pageW;
+      const imgH = (canvas.height * imgW) / canvas.width;
 
-      // Generate blob for upload
+      // Handle multi-page if content is long
+      if (imgH <= pageH) {
+        pdf.addImage(imgData, 'PNG', 0, 0, imgW, imgH);
+      } else {
+        let yOffset = 0;
+        let page = 0;
+        while (yOffset < imgH) {
+          if (page > 0) pdf.addPage();
+          pdf.addImage(imgData, 'PNG', 0, -yOffset, imgW, imgH);
+          yOffset += pageH;
+          page++;
+        }
+      }
+
+      // Generate blob for upload  
       const pdfBlob = pdf.output('blob');
-      const pdfFileName = `quote-${id.substring(0,8)}-${Date.now()}.pdf`;
+      const pdfFileName = `عرض-أتعاب-${quoteNumber || id.substring(0,8)}-${Date.now()}.pdf`;
 
       // Download locally
       pdf.save(pdfFileName);
-      this.toast('تم تحميل PDF بنجاح');
+      this.toast('تم تحميل عرض الأتعاب بنجاح');
 
       // Upload to Supabase Storage
       try {
@@ -924,13 +1156,16 @@ const App = {
         reader.readAsDataURL(pdfBlob);
       } catch (uploadErr) {
         console.log('PDF upload to storage skipped:', uploadErr.message);
-        // Still save local reference
         try { await this.api('PATCH', `/api/quotes/${id}/pdf`, { pdf_url: 'local_export' }); } catch(e) {}
       }
     } catch (e) {
+      console.error('PDF Export Error:', e);
       this.toast('فشل تصدير PDF: ' + e.message, 'error');
     } finally {
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-file-pdf ml-1"></i>PDF'; }
+      // Clean up if still in DOM
+      const leftover = document.getElementById('pdf-print-area');
+      if (leftover) leftover.remove();
     }
   },
 
