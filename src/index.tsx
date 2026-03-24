@@ -61,6 +61,9 @@ app.get('*', (c) => {
                 <a href="/reports" data-link class="nav-link px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 hover:text-primary-600 hover:bg-primary-50 transition-colors">
                   <i class="fas fa-chart-bar ml-1"></i> التقارير
                 </a>
+                <a href="/settings" data-link class="nav-link px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 hover:text-primary-600 hover:bg-primary-50 transition-colors">
+                  <i class="fas fa-cog ml-1"></i> الإعدادات
+                </a>
               </div>
             </div>
             <div class="flex items-center gap-2">
@@ -94,6 +97,9 @@ app.get('*', (c) => {
           </a>
           <a href="/reports" data-link class="nav-link flex-shrink-0 text-center px-2.5 py-1.5 rounded-lg text-[10px] font-medium text-gray-600">
             <i class="fas fa-chart-bar block text-base mb-0.5"></i>التقارير
+          </a>
+          <a href="/settings" data-link class="nav-link flex-shrink-0 text-center px-2.5 py-1.5 rounded-lg text-[10px] font-medium text-gray-600">
+            <i class="fas fa-cog block text-base mb-0.5"></i>الإعدادات
           </a>
         </div>
       </nav>
