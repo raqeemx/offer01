@@ -82,6 +82,7 @@ const App = {
     else if (p === '/kanban') this.renderKanban();
     else if (p === '/templates') this.renderTemplates();
     else if (p === '/templates/new') this.renderTemplateForm();
+    else if (p === '/quote-template') this.renderQuoteTemplateManager();
     else if (p === '/projects') this.renderProjects();
     else if (p.match(/^\/projects\/[\w-]+$/)) this.renderProjectDetail(p.split('/')[2]);
     else if (p === '/reports') this.renderReports();
@@ -352,9 +353,10 @@ const App = {
           <!-- Quick Actions -->
           <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
             <h3 class="font-semibold text-gray-800 mb-3"><i class="fas fa-bolt ml-2 text-amber-500"></i>إجراءات سريعة</h3>
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
               <a href="/quotes/new" data-link class="flex flex-col items-center gap-2 p-4 rounded-xl bg-primary-50 hover:bg-primary-100 transition-colors text-center"><i class="fas fa-plus-circle text-xl text-primary-600"></i><span class="text-xs font-medium text-primary-700">عرض جديد</span></a>
               <a href="/clients/new" data-link class="flex flex-col items-center gap-2 p-4 rounded-xl bg-blue-50 hover:bg-blue-100 transition-colors text-center"><i class="fas fa-user-plus text-xl text-blue-600"></i><span class="text-xs font-medium text-blue-700">عميل جديد</span></a>
+              <a href="/quote-template" data-link class="flex flex-col items-center gap-2 p-4 rounded-xl bg-amber-50 hover:bg-amber-100 transition-colors text-center"><i class="fas fa-file-contract text-xl text-amber-600"></i><span class="text-xs font-medium text-amber-700">قالب العرض</span></a>
               <a href="/kanban" data-link class="flex flex-col items-center gap-2 p-4 rounded-xl bg-purple-50 hover:bg-purple-100 transition-colors text-center"><i class="fas fa-columns text-xl text-purple-600"></i><span class="text-xs font-medium text-purple-700">كانبان</span></a>
               <a href="/templates/new" data-link class="flex flex-col items-center gap-2 p-4 rounded-xl bg-green-50 hover:bg-green-100 transition-colors text-center"><i class="fas fa-layer-group text-xl text-green-600"></i><span class="text-xs font-medium text-green-700">قالب جديد</span></a>
             </div>
@@ -963,314 +965,430 @@ const App = {
     );
   },
 
-  // ---- PDF Export - Professional Fee Proposal Template ----
+  // ========================================
+  // PDF Export via Browser Print (Perfect Arabic)
+  // ========================================
   async exportPDF(id) {
     const btn = document.getElementById('pdf-btn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spinner mx-auto" style="width:14px;height:14px;border-width:2px;"></div>'; }
     this.toast('جارٍ إنشاء عرض الأتعاب PDF...', 'info');
 
     try {
-      // Lazy-load jsPDF + html2canvas
-      await this._ensurePDFLibs();
-
       // Fetch quote data
       const quote = await this.api('GET', `/api/quotes/${id}`);
-      const items = quote.quote_items || [];
-      const cfg = this.getPdfSettings();
-
-      // Build a hidden printable template in the DOM
-      const printDiv = document.createElement('div');
-      printDiv.id = 'pdf-print-area';
-      printDiv.style.cssText = 'position:fixed;top:-9999px;left:0;width:794px;background:#fff;z-index:-1;font-family:"IBM Plex Sans Arabic",sans-serif;';
       
-      const clientName = quote.clients?.name || '';
-      const clientCompany = quote.clients?.company || '';
-      const clientEmail = quote.clients?.email || '';
-      const clientPhone = quote.clients?.phone || '';
-      const clientAddress = quote.clients?.address || '';
-      const quoteNumber = quote.quote_number || '';
-      const quoteDate = this.fmtDate(quote.created_at);
-      const validUntil = quote.valid_until ? this.fmtDate(quote.valid_until) : '';
-      const fmtNum = (n) => new Intl.NumberFormat('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
-      const subtotal = quote.total || 0;
-      const vatAmount = cfg.showVAT ? subtotal * (cfg.vatRate / 100) : 0;
-      const grandTotal = subtotal + vatAmount;
-      const pc = cfg.primaryColor;
-      const sc = cfg.secondaryColor;
-
-      // Compute validity days
-      const validDays = quote.valid_until ? Math.ceil((new Date(quote.valid_until) - new Date(quote.created_at)) / (1000*60*60*24)) : 30;
-
-      // Professional Arabic Fee Proposal Template (نموذج عرض أتعاب)
-      printDiv.innerHTML = `
-        <div style="padding:0;margin:0;direction:rtl;color:#1a1a2e;line-height:1.6;">
-
-          <!-- ═══════════ TOP COLOR BAR ═══════════ -->
-          <div style="height:6px;background:linear-gradient(90deg,${pc},${sc},${sc}99);"></div>
-
-          <!-- ═══════════ HEADER / LETTERHEAD ═══════════ -->
-          <div style="padding:28px 40px 20px;display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #e5e7eb;">
-            <!-- Company Info (Right) -->
-            <div style="flex:1;">
-              ${cfg.logoUrl ? `<img src="${cfg.logoUrl}" style="height:50px;margin-bottom:8px;" />` : ''}
-              <h2 style="font-size:20px;font-weight:800;color:${pc};margin:0;line-height:1.3;">${cfg.companyName}</h2>
-              ${cfg.companyNameEn ? `<p style="font-size:11px;color:#6b7280;margin:2px 0 0;font-weight:500;">${cfg.companyNameEn}</p>` : ''}
-              <div style="margin-top:8px;font-size:10px;color:#6b7280;line-height:1.8;">
-                ${cfg.companyAddress ? `<span><span style="color:${pc};margin-left:3px;">&#9679;</span> ${cfg.companyAddress}</span><br/>` : ''}
-                ${cfg.companyPhone ? `<span><span style="color:${pc};margin-left:3px;">&#9679;</span> هاتف: <span dir="ltr">${cfg.companyPhone}</span></span><br/>` : ''}
-                ${cfg.companyEmail ? `<span><span style="color:${pc};margin-left:3px;">&#9679;</span> ${cfg.companyEmail}</span><br/>` : ''}
-                ${cfg.companyWebsite ? `<span><span style="color:${pc};margin-left:3px;">&#9679;</span> ${cfg.companyWebsite}</span>` : ''}
-              </div>
-            </div>
-            <!-- Document Title & Number (Left) -->
-            <div style="text-align:left;min-width:200px;">
-              <div style="background:${pc};color:#fff;border-radius:10px;padding:16px 20px;text-align:center;">
-                <h1 style="font-size:22px;font-weight:800;margin:0;letter-spacing:0.5px;">عرض أتعاب</h1>
-                <p style="font-size:11px;margin:4px 0 0;opacity:0.85;font-weight:500;">Fee Proposal</p>
-              </div>
-              <div style="background:#f0f4ff;border:1px solid #dbeafe;border-radius:8px;padding:10px 14px;margin-top:10px;text-align:center;">
-                <p style="font-size:10px;color:#6b7280;margin:0;">رقم العرض / Ref No.</p>
-                <p style="font-size:15px;font-weight:800;color:${pc};margin:3px 0 0;direction:ltr;">${quoteNumber}</p>
-              </div>
-              <div style="text-align:center;margin-top:6px;">
-                <p style="font-size:10px;color:#6b7280;margin:0;">التاريخ: ${quoteDate}</p>
-              </div>
-            </div>
-          </div>
-
-          <!-- ═══════════ ADDRESSED TO / CLIENT INFO ═══════════ -->
-          <div style="padding:20px 40px;display:flex;gap:20px;">
-            <!-- Client Details -->
-            <div style="flex:1;background:#fafbff;border:1px solid #e8ecf4;border-radius:10px;padding:16px 18px;">
-              <p style="font-size:10px;font-weight:800;color:${pc};letter-spacing:1px;margin:0 0 10px;border-bottom:2px solid ${sc}44;padding-bottom:7px;">مقدم إلى / ADDRESSED TO</p>
-              <p style="font-size:15px;font-weight:700;color:#1a1a2e;margin:0 0 3px;">${clientName}</p>
-              ${clientCompany ? `<p style="font-size:12px;color:#4b5563;margin:0 0 3px;font-weight:500;">${clientCompany}</p>` : ''}
-              ${clientAddress ? `<p style="font-size:11px;color:#6b7280;margin:0 0 2px;">${clientAddress}</p>` : ''}
-              ${clientEmail ? `<p style="font-size:11px;color:#6b7280;margin:0 0 2px;">${clientEmail}</p>` : ''}
-              ${clientPhone ? `<p style="font-size:11px;color:#6b7280;margin:0;direction:ltr;text-align:right;">${clientPhone}</p>` : ''}
-            </div>
-            <!-- Quote Meta -->
-            <div style="flex:1;background:#fafbff;border:1px solid #e8ecf4;border-radius:10px;padding:16px 18px;">
-              <p style="font-size:10px;font-weight:800;color:${pc};letter-spacing:1px;margin:0 0 10px;border-bottom:2px solid ${sc}44;padding-bottom:7px;">تفاصيل العرض / PROPOSAL DETAILS</p>
-              <table style="width:100%;border-collapse:collapse;">
-                <tr><td style="font-size:11px;color:#6b7280;padding:3px 0;width:40%;">تاريخ الإصدار:</td><td style="font-size:12px;font-weight:600;color:#1a1a2e;padding:3px 0;">${quoteDate}</td></tr>
-                ${validUntil ? `<tr><td style="font-size:11px;color:#6b7280;padding:3px 0;">صالح حتى:</td><td style="font-size:12px;font-weight:600;color:#1a1a2e;padding:3px 0;">${validUntil}</td></tr>` : ''}
-                <tr><td style="font-size:11px;color:#6b7280;padding:3px 0;">مدة الصلاحية:</td><td style="font-size:12px;font-weight:600;color:#1a1a2e;padding:3px 0;">${validDays} يوماً</td></tr>
-                ${cfg.companyCR ? `<tr><td style="font-size:11px;color:#6b7280;padding:3px 0;">السجل التجاري:</td><td style="font-size:12px;font-weight:600;color:#1a1a2e;padding:3px 0;direction:ltr;text-align:right;">${cfg.companyCR}</td></tr>` : ''}
-                ${cfg.companyVAT ? `<tr><td style="font-size:11px;color:#6b7280;padding:3px 0;">الرقم الضريبي:</td><td style="font-size:12px;font-weight:600;color:#1a1a2e;padding:3px 0;direction:ltr;text-align:right;">${cfg.companyVAT}</td></tr>` : ''}
-              </table>
-            </div>
-          </div>
-
-          <!-- ═══════════ SUBJECT / PROJECT TITLE ═══════════ -->
-          ${quote.title ? `<div style="padding:0 40px;margin-bottom:18px;">
-            <div style="background:linear-gradient(135deg,${pc}0a,${sc}0a);border:1px solid ${sc}33;border-right:4px solid ${pc};border-radius:8px;padding:14px 18px;">
-              <p style="font-size:10px;color:${pc};font-weight:700;margin:0 0 4px;letter-spacing:0.5px;">الموضوع / SUBJECT</p>
-              <p style="font-size:15px;color:#1a1a2e;font-weight:700;margin:0;">${quote.title}</p>
-            </div>
-          </div>` : ''}
-
-          <!-- ═══════════ SCOPE OF WORK / ITEMS TABLE ═══════════ -->
-          <div style="padding:0 40px;margin-bottom:18px;">
-            <p style="font-size:12px;font-weight:800;color:${pc};margin:0 0 10px;letter-spacing:0.5px;">بنود الأتعاب / SCOPE & FEES</p>
-            <table style="width:100%;border-collapse:collapse;border:1px solid #d1d5db;">
-              <thead>
-                <tr style="background:${pc};">
-                  <th style="padding:10px 12px;text-align:right;font-size:11px;font-weight:700;color:#fff;width:36px;border-left:1px solid ${sc};">م</th>
-                  <th style="padding:10px 12px;text-align:right;font-size:11px;font-weight:700;color:#fff;border-left:1px solid ${sc};">البند / الوصف</th>
-                  <th style="padding:10px 12px;text-align:center;font-size:11px;font-weight:700;color:#fff;width:60px;border-left:1px solid ${sc};">الكمية</th>
-                  <th style="padding:10px 12px;text-align:center;font-size:11px;font-weight:700;color:#fff;width:110px;border-left:1px solid ${sc};">سعر الوحدة</th>
-                  <th style="padding:10px 12px;text-align:center;font-size:11px;font-weight:700;color:#fff;width:110px;">المبلغ (${cfg.currency})</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${items.map((item, i) => `
-                  <tr style="background:${i % 2 === 0 ? '#fff' : '#f8f9fb'};border-bottom:1px solid #e5e7eb;">
-                    <td style="padding:10px 12px;font-size:12px;color:#6b7280;font-weight:700;text-align:center;border-left:1px solid #e5e7eb;">${i + 1}</td>
-                    <td style="padding:10px 12px;font-size:12px;color:#1a1a2e;font-weight:500;text-align:right;border-left:1px solid #e5e7eb;">${item.description}</td>
-                    <td style="padding:10px 12px;font-size:12px;color:#4b5563;text-align:center;border-left:1px solid #e5e7eb;">${item.quantity}</td>
-                    <td style="padding:10px 12px;font-size:12px;color:#4b5563;text-align:center;direction:ltr;border-left:1px solid #e5e7eb;">${fmtNum(item.unit_price)}</td>
-                    <td style="padding:10px 12px;font-size:12px;color:#1a1a2e;font-weight:700;text-align:center;direction:ltr;">${fmtNum(item.total || item.quantity * item.unit_price)}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>
-
-          <!-- ═══════════ TOTALS SECTION ═══════════ -->
-          <div style="padding:0 40px;margin-bottom:20px;">
-            <div style="display:flex;justify-content:flex-start;">
-              <table style="width:300px;border-collapse:collapse;border:1px solid #d1d5db;">
-                <tr style="background:#f8f9fb;border-bottom:1px solid #e5e7eb;">
-                  <td style="padding:9px 14px;font-size:12px;color:#6b7280;font-weight:600;">المجموع الفرعي / Subtotal</td>
-                  <td style="padding:9px 14px;font-size:13px;font-weight:700;color:#1a1a2e;text-align:left;direction:ltr;width:130px;">${fmtNum(subtotal)} ${cfg.currency}</td>
-                </tr>
-                ${cfg.showVAT ? `<tr style="background:#f8f9fb;border-bottom:1px solid #e5e7eb;">
-                  <td style="padding:9px 14px;font-size:12px;color:#6b7280;font-weight:600;">ضريبة القيمة المضافة (${cfg.vatRate}%)</td>
-                  <td style="padding:9px 14px;font-size:13px;font-weight:700;color:#1a1a2e;text-align:left;direction:ltr;">${fmtNum(vatAmount)} ${cfg.currency}</td>
-                </tr>` : ''}
-                <tr style="background:${pc};">
-                  <td style="padding:12px 14px;font-size:13px;font-weight:800;color:#fff;">الإجمالي ${cfg.showVAT ? 'شامل الضريبة' : ''} / Total</td>
-                  <td style="padding:12px 14px;font-size:16px;font-weight:900;color:#fff;text-align:left;direction:ltr;">${fmtNum(grandTotal)} ${cfg.currency}</td>
-                </tr>
-              </table>
-            </div>
-          </div>
-
-          <!-- ═══════════ NOTES ═══════════ -->
-          ${quote.notes ? `<div style="padding:0 40px;margin-bottom:16px;">
-            <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;">
-              <p style="font-size:10px;font-weight:700;color:#92400e;margin:0 0 5px;letter-spacing:0.5px;">ملاحظات / NOTES</p>
-              <p style="font-size:11px;color:#4b5563;margin:0;line-height:1.7;white-space:pre-wrap;">${quote.notes}</p>
-            </div>
-          </div>` : ''}
-
-          <!-- ═══════════ PAYMENT TERMS ═══════════ -->
-          ${cfg.showPaymentTerms && cfg.paymentTerms.length > 0 ? `<div style="padding:0 40px;margin-bottom:16px;">
-            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 16px;">
-              <p style="font-size:10px;font-weight:700;color:#166534;margin:0 0 6px;letter-spacing:0.5px;">شروط الدفع / PAYMENT TERMS</p>
-              <ul style="margin:0;padding:0 16px;list-style-type:disc;">
-                ${cfg.paymentTerms.map(t => `<li style="font-size:11px;color:#374151;margin-bottom:3px;line-height:1.6;">${t}</li>`).join('')}
-              </ul>
-            </div>
-          </div>` : ''}
-
-          <!-- ═══════════ TERMS & CONDITIONS ═══════════ -->
-          ${cfg.showTermsAndConditions && cfg.termsAndConditions.length > 0 ? `<div style="padding:0 40px;margin-bottom:18px;">
-            <div style="background:#fafbff;border:1px solid #e8ecf4;border-radius:8px;padding:12px 16px;">
-              <p style="font-size:10px;font-weight:700;color:${pc};margin:0 0 6px;letter-spacing:0.5px;">الشروط والأحكام / TERMS & CONDITIONS</p>
-              <ol style="margin:0;padding:0 18px;list-style-type:decimal;">
-                ${cfg.termsAndConditions.map(t => `<li style="font-size:11px;color:#4b5563;margin-bottom:3px;line-height:1.6;">${t}</li>`).join('')}
-              </ol>
-            </div>
-          </div>` : ''}
-
-          <!-- ═══════════ SIGNATURE AREA ═══════════ -->
-          ${cfg.showSignatureArea ? `<div style="padding:0 40px;margin-bottom:20px;">
-            <div style="display:flex;gap:30px;">
-              <div style="flex:1;border:1px solid #e5e7eb;border-radius:10px;padding:16px 18px;text-align:center;">
-                <p style="font-size:10px;font-weight:700;color:${pc};margin:0 0 6px;letter-spacing:0.5px;">الطرف الأول / مقدم العرض</p>
-                <p style="font-size:12px;font-weight:600;color:#374151;margin:0 0 4px;">${cfg.companyName}</p>
-                <div style="height:55px;"></div>
-                <div style="border-top:1px solid #d1d5db;padding-top:8px;">
-                  <p style="font-size:10px;color:#9ca3af;margin:0;">التوقيع: .........................................</p>
-                  <p style="font-size:10px;color:#9ca3af;margin:3px 0 0;">الاسم: .........................................</p>
-                  <p style="font-size:10px;color:#9ca3af;margin:3px 0 0;">التاريخ: .........................................</p>
-                  ${cfg.showCompanyStamp ? `<p style="font-size:10px;color:#9ca3af;margin:3px 0 0;">الختم: .........................................</p>` : ''}
-                </div>
-              </div>
-              <div style="flex:1;border:1px solid #e5e7eb;border-radius:10px;padding:16px 18px;text-align:center;">
-                <p style="font-size:10px;font-weight:700;color:${pc};margin:0 0 6px;letter-spacing:0.5px;">الطرف الثاني / العميل</p>
-                <p style="font-size:12px;font-weight:600;color:#374151;margin:0 0 4px;">${clientName}${clientCompany ? ' - ' + clientCompany : ''}</p>
-                <div style="height:55px;"></div>
-                <div style="border-top:1px solid #d1d5db;padding-top:8px;">
-                  <p style="font-size:10px;color:#9ca3af;margin:0;">التوقيع: .........................................</p>
-                  <p style="font-size:10px;color:#9ca3af;margin:3px 0 0;">الاسم: .........................................</p>
-                  <p style="font-size:10px;color:#9ca3af;margin:3px 0 0;">التاريخ: .........................................</p>
-                  ${cfg.showCompanyStamp ? `<p style="font-size:10px;color:#9ca3af;margin:3px 0 0;">الختم: .........................................</p>` : ''}
-                </div>
-              </div>
-            </div>
-          </div>` : ''}
-
-          <!-- ═══════════ FOOTER ═══════════ -->
-          <div style="padding:14px 40px;background:${pc};text-align:center;">
-            <p style="font-size:11px;color:#fff;margin:0;font-weight:500;">${cfg.footerText}</p>
-            <p style="font-size:9px;color:#ffffff99;margin:4px 0 0;">${cfg.companyName} | ${cfg.companyPhone ? cfg.companyPhone + ' | ' : ''}${cfg.companyEmail ? cfg.companyEmail + ' | ' : ''}${quoteNumber}</p>
-          </div>
-
-          <!-- Bottom Accent Bar -->
-          <div style="height:4px;background:linear-gradient(90deg,${sc},${pc});"></div>
-        </div>
-      `;
-
-      document.body.appendChild(printDiv);
-
-      // Wait for fonts & images to load
-      await new Promise(r => setTimeout(r, 600));
-
-      // Capture with html2canvas (handles Arabic text perfectly via browser rendering)
-      const canvas = await html2canvas(printDiv, {
-        scale: 2.5,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        logging: false,
-        width: 794,
-        windowWidth: 794,
-      });
-
-      // Clean up
-      document.body.removeChild(printDiv);
-
-      // Create PDF using jsPDF
-      let JsPDF;
-      if (window.jspdf && window.jspdf.jsPDF) {
-        JsPDF = window.jspdf.jsPDF;
-      } else if (window.jsPDF) {
-        JsPDF = window.jsPDF;
+      // Check if user has saved PDF templates
+      const pdfTemplates = this.getPdfTemplatesList();
+      
+      if (pdfTemplates.length > 0) {
+        // Show template selection dialog
+        this._showTemplateSelectionForExport(quote);
       } else {
-        throw new Error('مكتبة jsPDF غير متوفرة. يرجى تحديث الصفحة والمحاولة مرة أخرى.');
-      }
-
-      const pdf = new JsPDF('p', 'mm', 'a4');
-      const imgData = canvas.toDataURL('image/jpeg', 0.95);
-      const pageW = pdf.internal.pageSize.getWidth();
-      const pageH = pdf.internal.pageSize.getHeight();
-      const imgW = pageW;
-      const imgH = (canvas.height * imgW) / canvas.width;
-
-      // Handle multi-page if content is long
-      if (imgH <= pageH) {
-        pdf.addImage(imgData, 'JPEG', 0, 0, imgW, imgH);
-      } else {
-        let yOffset = 0;
-        let page = 0;
-        while (yOffset < imgH) {
-          if (page > 0) pdf.addPage();
-          pdf.addImage(imgData, 'JPEG', 0, -yOffset, imgW, imgH);
-          yOffset += pageH;
-          page++;
-        }
-      }
-
-      // Generate blob for upload  
-      const pdfBlob = pdf.output('blob');
-      const pdfFileName = `عرض-أتعاب-${quoteNumber || id.substring(0,8)}-${Date.now()}.pdf`;
-
-      // Download locally
-      pdf.save(pdfFileName);
-      this.toast('تم تحميل عرض الأتعاب بنجاح ✅');
-
-      // Upload to Supabase Storage
-      try {
-        const reader = new FileReader();
-        reader.onload = async () => {
-          const base64 = reader.result.split(',')[1];
-          const result = await this.api('POST', `/api/quotes/${id}/upload-pdf`, {
-            base64Data: base64,
-            fileName: pdfFileName,
-          });
-          if (result.pdf_url) {
-            this.toast('تم حفظ PDF في السحابة', 'success');
-          }
-        };
-        reader.readAsDataURL(pdfBlob);
-      } catch (uploadErr) {
-        console.log('PDF upload to storage skipped:', uploadErr.message);
-        try { await this.api('PATCH', `/api/quotes/${id}/pdf`, { pdf_url: 'local_export' }); } catch(e) {}
+        // Use default built-in template
+        this._exportWithBuiltinTemplate(quote);
       }
     } catch (e) {
       console.error('PDF Export Error:', e);
       this.toast('فشل تصدير PDF: ' + e.message, 'error');
     } finally {
       if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-file-pdf ml-1"></i>PDF'; }
-      // Clean up if still in DOM
-      const leftover = document.getElementById('pdf-print-area');
-      if (leftover) leftover.remove();
     }
   },
 
-  async deleteQuote(id) { if (!confirm('حذف هذا العرض؟ لا يمكن التراجع.')) return; try { await this.api('DELETE', `/api/quotes/${id}`); this.toast('تم حذف العرض'); history.pushState(null,'','/quotes'); this.route(); } catch(e) { this.toast(e.message,'error'); } },
+  _showTemplateSelectionForExport(quote) {
+    const templates = this.getPdfTemplatesList();
+    this.showModal(`
+      <div class="p-6">
+        <h3 class="text-lg font-bold text-gray-800 mb-4"><i class="fas fa-file-pdf ml-2 text-red-500"></i>اختر قالب التصدير</h3>
+        <div class="space-y-2 mb-4">
+          <button onclick="App.closeModal();App._exportWithBuiltinTemplate(window._exportQuote)" 
+            class="w-full text-right p-3 rounded-xl border-2 border-gray-200 hover:border-primary-400 hover:bg-primary-50 transition-all">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 bg-primary-100 rounded-lg flex items-center justify-center"><i class="fas fa-table text-primary-600"></i></div>
+              <div><p class="font-semibold text-gray-800">القالب الافتراضي (جدول بنود)</p>
+              <p class="text-xs text-gray-500">عرض أتعاب مع جدول البنود والمجاميع</p></div>
+            </div>
+          </button>
+          ${templates.map(t => `
+          <button onclick="App.closeModal();App._exportWithTextTemplate('${t.id}', window._exportQuote)" 
+            class="w-full text-right p-3 rounded-xl border-2 border-gray-200 hover:border-amber-400 hover:bg-amber-50 transition-all">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center"><i class="fas fa-file-contract text-amber-600"></i></div>
+              <div><p class="font-semibold text-gray-800">${this._escHtml(t.name)}</p>
+              <p class="text-xs text-gray-500">قالب نصي مع متغيرات</p></div>
+            </div>
+          </button>`).join('')}
+        </div>
+        <div class="flex justify-end">
+          <button onclick="App.closeModal()" class="px-4 py-2 rounded-xl text-sm text-gray-600 hover:bg-gray-100">إلغاء</button>
+        </div>
+      </div>
+    `);
+    window._exportQuote = quote;
+  },
+
+  // Export using text template (from template manager)
+  async _exportWithTextTemplate(templateId, quote) {
+    const template = this.getPdfTemplate(templateId);
+    if (!template) { this.toast('القالب غير موجود', 'error'); return; }
+
+    const cfg = this.getPdfSettings();
+    const logo = this.getCompanyLogo();
+    const items = quote.quote_items || [];
+    const subtotal = quote.total || 0;
+    const vatAmount = cfg.showVAT ? subtotal * (cfg.vatRate / 100) : 0;
+    const grandTotal = subtotal + vatAmount;
+    const fmtNum = (n) => new Intl.NumberFormat('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
+    const validDays = quote.valid_until ? Math.ceil((new Date(quote.valid_until) - new Date(quote.created_at)) / (1000*60*60*24)) : 30;
+
+    // Build variables from quote data
+    const vars = {
+      quote_number: quote.quote_number || '',
+      quote_date: this.fmtDate(quote.created_at),
+      client_name: quote.clients?.name || '',
+      company_name: quote.clients?.company || '',
+      client_email: quote.clients?.email || '',
+      client_phone: quote.clients?.phone || '',
+      client_address: quote.clients?.address || '',
+      subject: quote.title || '',
+      company_name_internal: cfg.companyName || '',
+      service_type: quote.title || '',
+      scope_of_work: items.map((it, i) => `- ${it.description}`).join('\n'),
+      start_days: '5',
+      duration_days: '15',
+      fees: fmtNum(subtotal),
+      vat_percentage: String(cfg.vatRate),
+      vat: fmtNum(vatAmount),
+      total: fmtNum(grandTotal),
+      validity_days: String(validDays),
+      bank_name: '',
+      iban: '',
+      prepared_by: '',
+      job_title: '',
+      notes: quote.notes || '',
+    };
+
+    // Merge with saved template vars
+    const savedVars = this.getQuoteVars();
+    for (const key of Object.keys(savedVars)) {
+      if (!vars[key] || vars[key] === '') vars[key] = savedVars[key];
+    }
+
+    // Fill template
+    let filled = template.content;
+    for (const [key, value] of Object.entries(vars)) {
+      filled = filled.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value || '');
+    }
+
+    const pc = cfg.primaryColor || '#1e3a8a';
+    
+    // Convert plain text to styled HTML
+    const htmlLines = filled.split('\n').map(line => {
+      const trimmed = line.trim();
+      if (/^-{10,}$/.test(trimmed)) return '<hr style="border:none;border-top:1.5px solid #d1d5db;margin:12px 0;">';
+      if (trimmed === '') return '<div style="height:8px;"></div>';
+      if (/^(أولاً|ثانياً|ثالثاً|رابعاً|خامساً|سادساً|سابعاً|ثامناً|تاسعاً|عاشراً|الحادي عشر|الثاني عشر|الثالث عشر)/.test(trimmed)) {
+        return `<h3 style="font-size:14px;font-weight:800;color:${pc};margin:18px 0 6px;padding:6px 12px;border-right:4px solid ${pc};background:${pc}08;">${this._escHtml(trimmed)}</h3>`;
+      }
+      if (trimmed.startsWith('- ')) return `<div style="padding:2px 0 2px 0;margin-right:16px;font-size:12px;color:#374151;">&#8226; ${this._escHtml(trimmed.substring(2))}</div>`;
+      if (/^\d+\./.test(trimmed)) return `<div style="padding:2px 0;margin-right:16px;font-size:12px;color:#374151;">${this._escHtml(trimmed)}</div>`;
+      return `<p style="font-size:12px;line-height:2;color:#1a1a2e;margin:0 0 4px;">${this._escHtml(trimmed)}</p>`;
+    }).join('');
+
+    this._printPdfHtml(`
+      <div style="padding:0;margin:0;">
+        <div style="height:5px;background:linear-gradient(90deg,${pc},${cfg.secondaryColor});"></div>
+        <div style="padding:24px 36px 16px;display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #e5e7eb;">
+          <div style="flex:1;">
+            ${logo ? `<img src="${logo}" style="height:50px;margin-bottom:8px;" />` : ''}
+            <h2 style="font-size:18px;font-weight:800;color:${pc};margin:0;">${this._escHtml(cfg.companyName)}</h2>
+            ${cfg.companyNameEn ? `<p style="font-size:10px;color:#6b7280;margin:2px 0 0;">${this._escHtml(cfg.companyNameEn)}</p>` : ''}
+            <div style="margin-top:6px;font-size:9px;color:#6b7280;line-height:1.8;">
+              ${[cfg.companyAddress, cfg.companyPhone, cfg.companyEmail].filter(Boolean).map(d => `<span>${this._escHtml(d)}</span>`).join(' | ')}
+            </div>
+          </div>
+          <div style="text-align:left;min-width:180px;">
+            <div style="background:${pc};color:#fff;border-radius:8px;padding:14px 18px;text-align:center;">
+              <h1 style="font-size:20px;font-weight:800;margin:0;">عرض أتعاب</h1>
+              <p style="font-size:10px;margin:3px 0 0;opacity:0.85;">Fee Proposal</p>
+            </div>
+            <div style="background:#f0f4ff;border:1px solid #dbeafe;border-radius:6px;padding:8px 12px;margin-top:8px;text-align:center;">
+              <p style="font-size:9px;color:#6b7280;margin:0;">رقم العرض</p>
+              <p style="font-size:14px;font-weight:800;color:${pc};margin:2px 0 0;">${quote.quote_number || ''}</p>
+            </div>
+          </div>
+        </div>
+        <div style="padding:20px 36px;">
+          ${htmlLines}
+        </div>
+        <div style="padding:12px 36px;background:${pc};text-align:center;margin-top:20px;">
+          <p style="font-size:10px;color:#fff;margin:0;">${this._escHtml(cfg.footerText)}</p>
+          <p style="font-size:8px;color:#ffffff99;margin:3px 0 0;">${this._escHtml(cfg.companyName)} | ${quote.quote_number || ''}</p>
+        </div>
+        <div style="height:4px;background:linear-gradient(90deg,${cfg.secondaryColor},${pc});"></div>
+      </div>
+    `, `عرض-أتعاب-${quote.quote_number || 'draft'}`);
+  },
+
+  // Export using built-in table template
+  _exportWithBuiltinTemplate(quote) {
+    const items = quote.quote_items || [];
+    const cfg = this.getPdfSettings();
+    const logo = this.getCompanyLogo();
+    const pc = cfg.primaryColor || '#1e3a8a';
+    const sc = cfg.secondaryColor || '#3b82f6';
+    const fmtNum = (n) => new Intl.NumberFormat('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0);
+    const subtotal = quote.total || 0;
+    const vatAmount = cfg.showVAT ? subtotal * (cfg.vatRate / 100) : 0;
+    const grandTotal = subtotal + vatAmount;
+    const validDays = quote.valid_until ? Math.ceil((new Date(quote.valid_until) - new Date(quote.created_at)) / (1000*60*60*24)) : 30;
+    const clientName = quote.clients?.name || '';
+    const clientCompany = quote.clients?.company || '';
+    const clientEmail = quote.clients?.email || '';
+    const clientPhone = quote.clients?.phone || '';
+    const clientAddress = quote.clients?.address || '';
+    const quoteNumber = quote.quote_number || '';
+    const quoteDate = this.fmtDate(quote.created_at);
+    const validUntil = quote.valid_until ? this.fmtDate(quote.valid_until) : '';
+
+    this._printPdfHtml(`
+      <div style="padding:0;margin:0;">
+        <div style="height:5px;background:linear-gradient(90deg,${pc},${sc},${sc}99);"></div>
+        
+        <!-- Header -->
+        <div style="padding:24px 36px 16px;display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #e5e7eb;">
+          <div style="flex:1;">
+            ${logo ? `<img src="${logo}" style="height:50px;margin-bottom:8px;" />` : ''}
+            <h2 style="font-size:18px;font-weight:800;color:${pc};margin:0;line-height:1.3;">${this._escHtml(cfg.companyName)}</h2>
+            ${cfg.companyNameEn ? `<p style="font-size:10px;color:#6b7280;margin:2px 0 0;font-weight:500;">${this._escHtml(cfg.companyNameEn)}</p>` : ''}
+            <div style="margin-top:6px;font-size:9px;color:#6b7280;line-height:1.8;">
+              ${cfg.companyAddress ? `<span style="color:${pc};margin-left:3px;">&#9679;</span> ${this._escHtml(cfg.companyAddress)}<br/>` : ''}
+              ${cfg.companyPhone ? `<span style="color:${pc};margin-left:3px;">&#9679;</span> هاتف: <span dir="ltr">${this._escHtml(cfg.companyPhone)}</span><br/>` : ''}
+              ${cfg.companyEmail ? `<span style="color:${pc};margin-left:3px;">&#9679;</span> ${this._escHtml(cfg.companyEmail)}` : ''}
+            </div>
+          </div>
+          <div style="text-align:left;min-width:180px;">
+            <div style="background:${pc};color:#fff;border-radius:8px;padding:14px 18px;text-align:center;">
+              <h1 style="font-size:20px;font-weight:800;margin:0;">عرض أتعاب</h1>
+              <p style="font-size:10px;margin:3px 0 0;opacity:0.85;">Fee Proposal</p>
+            </div>
+            <div style="background:#f0f4ff;border:1px solid #dbeafe;border-radius:6px;padding:8px 12px;margin-top:8px;text-align:center;">
+              <p style="font-size:9px;color:#6b7280;margin:0;">رقم العرض / Ref No.</p>
+              <p style="font-size:14px;font-weight:800;color:${pc};margin:2px 0 0;direction:ltr;">${quoteNumber}</p>
+            </div>
+            <p style="font-size:9px;color:#6b7280;margin:5px 0 0;text-align:center;">التاريخ: ${quoteDate}</p>
+          </div>
+        </div>
+
+        <!-- Client & Details -->
+        <div style="padding:16px 36px;display:flex;gap:16px;">
+          <div style="flex:1;background:#fafbff;border:1px solid #e8ecf4;border-radius:8px;padding:14px 16px;">
+            <p style="font-size:9px;font-weight:800;color:${pc};letter-spacing:1px;margin:0 0 8px;border-bottom:2px solid ${sc}44;padding-bottom:6px;">مقدم إلى / ADDRESSED TO</p>
+            <p style="font-size:14px;font-weight:700;color:#1a1a2e;margin:0 0 3px;">${this._escHtml(clientName)}</p>
+            ${clientCompany ? `<p style="font-size:11px;color:#4b5563;margin:0 0 2px;">${this._escHtml(clientCompany)}</p>` : ''}
+            ${clientAddress ? `<p style="font-size:10px;color:#6b7280;margin:0 0 2px;">${this._escHtml(clientAddress)}</p>` : ''}
+            ${clientEmail ? `<p style="font-size:10px;color:#6b7280;margin:0 0 2px;">${this._escHtml(clientEmail)}</p>` : ''}
+            ${clientPhone ? `<p style="font-size:10px;color:#6b7280;margin:0;" dir="ltr" style="text-align:right;">${this._escHtml(clientPhone)}</p>` : ''}
+          </div>
+          <div style="flex:1;background:#fafbff;border:1px solid #e8ecf4;border-radius:8px;padding:14px 16px;">
+            <p style="font-size:9px;font-weight:800;color:${pc};letter-spacing:1px;margin:0 0 8px;border-bottom:2px solid ${sc}44;padding-bottom:6px;">تفاصيل العرض / DETAILS</p>
+            <table style="width:100%;border-collapse:collapse;">
+              <tr><td style="font-size:10px;color:#6b7280;padding:2px 0;">تاريخ الإصدار:</td><td style="font-size:11px;font-weight:600;color:#1a1a2e;">${quoteDate}</td></tr>
+              ${validUntil ? `<tr><td style="font-size:10px;color:#6b7280;padding:2px 0;">صالح حتى:</td><td style="font-size:11px;font-weight:600;color:#1a1a2e;">${validUntil}</td></tr>` : ''}
+              <tr><td style="font-size:10px;color:#6b7280;padding:2px 0;">مدة الصلاحية:</td><td style="font-size:11px;font-weight:600;color:#1a1a2e;">${validDays} يوماً</td></tr>
+              ${cfg.companyCR ? `<tr><td style="font-size:10px;color:#6b7280;padding:2px 0;">السجل التجاري:</td><td style="font-size:11px;font-weight:600;color:#1a1a2e;">${this._escHtml(cfg.companyCR)}</td></tr>` : ''}
+            </table>
+          </div>
+        </div>
+
+        <!-- Subject -->
+        ${quote.title ? `<div style="padding:0 36px;margin-bottom:14px;">
+          <div style="background:${pc}08;border:1px solid ${sc}33;border-right:4px solid ${pc};border-radius:6px;padding:12px 16px;">
+            <p style="font-size:9px;color:${pc};font-weight:700;margin:0 0 3px;">الموضوع / SUBJECT</p>
+            <p style="font-size:14px;color:#1a1a2e;font-weight:700;margin:0;">${this._escHtml(quote.title)}</p>
+          </div>
+        </div>` : ''}
+
+        <!-- Items Table -->
+        <div style="padding:0 36px;margin-bottom:14px;">
+          <p style="font-size:11px;font-weight:800;color:${pc};margin:0 0 8px;">بنود الأتعاب / SCOPE & FEES</p>
+          <table style="width:100%;border-collapse:collapse;border:1px solid #d1d5db;">
+            <thead>
+              <tr style="background:${pc};">
+                <th style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;color:#fff;width:30px;border-left:1px solid ${sc};">م</th>
+                <th style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;color:#fff;border-left:1px solid ${sc};">البند / الوصف</th>
+                <th style="padding:8px 10px;text-align:center;font-size:10px;font-weight:700;color:#fff;width:50px;border-left:1px solid ${sc};">الكمية</th>
+                <th style="padding:8px 10px;text-align:center;font-size:10px;font-weight:700;color:#fff;width:100px;border-left:1px solid ${sc};">سعر الوحدة</th>
+                <th style="padding:8px 10px;text-align:center;font-size:10px;font-weight:700;color:#fff;width:100px;">المبلغ (${this._escHtml(cfg.currency)})</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${items.map((item, i) => `
+                <tr style="background:${i % 2 === 0 ? '#fff' : '#f8f9fb'};border-bottom:1px solid #e5e7eb;">
+                  <td style="padding:8px 10px;font-size:11px;color:#6b7280;font-weight:700;text-align:center;border-left:1px solid #e5e7eb;">${i + 1}</td>
+                  <td style="padding:8px 10px;font-size:11px;color:#1a1a2e;font-weight:500;border-left:1px solid #e5e7eb;">${this._escHtml(item.description)}</td>
+                  <td style="padding:8px 10px;font-size:11px;color:#4b5563;text-align:center;border-left:1px solid #e5e7eb;">${item.quantity}</td>
+                  <td style="padding:8px 10px;font-size:11px;color:#4b5563;text-align:center;border-left:1px solid #e5e7eb;">${fmtNum(item.unit_price)}</td>
+                  <td style="padding:8px 10px;font-size:11px;color:#1a1a2e;font-weight:700;text-align:center;">${fmtNum(item.total || item.quantity * item.unit_price)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Totals -->
+        <div style="padding:0 36px;margin-bottom:16px;">
+          <div style="display:flex;justify-content:flex-start;">
+            <table style="width:280px;border-collapse:collapse;border:1px solid #d1d5db;">
+              <tr style="background:#f8f9fb;border-bottom:1px solid #e5e7eb;">
+                <td style="padding:8px 12px;font-size:11px;color:#6b7280;font-weight:600;">المجموع الفرعي</td>
+                <td style="padding:8px 12px;font-size:12px;font-weight:700;color:#1a1a2e;text-align:left;direction:ltr;width:120px;">${fmtNum(subtotal)} ${this._escHtml(cfg.currency)}</td>
+              </tr>
+              ${cfg.showVAT ? `<tr style="background:#f8f9fb;border-bottom:1px solid #e5e7eb;">
+                <td style="padding:8px 12px;font-size:11px;color:#6b7280;font-weight:600;">ضريبة القيمة المضافة (${cfg.vatRate}%)</td>
+                <td style="padding:8px 12px;font-size:12px;font-weight:700;color:#1a1a2e;text-align:left;direction:ltr;">${fmtNum(vatAmount)} ${this._escHtml(cfg.currency)}</td>
+              </tr>` : ''}
+              <tr style="background:${pc};">
+                <td style="padding:10px 12px;font-size:12px;font-weight:800;color:#fff;">الإجمالي ${cfg.showVAT ? 'شامل الضريبة' : ''}</td>
+                <td style="padding:10px 12px;font-size:15px;font-weight:900;color:#fff;text-align:left;direction:ltr;">${fmtNum(grandTotal)} ${this._escHtml(cfg.currency)}</td>
+              </tr>
+            </table>
+          </div>
+        </div>
+
+        <!-- Notes -->
+        ${quote.notes ? `<div style="padding:0 36px;margin-bottom:12px;">
+          <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:10px 14px;">
+            <p style="font-size:9px;font-weight:700;color:#92400e;margin:0 0 4px;">ملاحظات / NOTES</p>
+            <p style="font-size:10px;color:#4b5563;margin:0;line-height:1.7;white-space:pre-wrap;">${this._escHtml(quote.notes)}</p>
+          </div>
+        </div>` : ''}
+
+        <!-- Payment Terms -->
+        ${cfg.showPaymentTerms && cfg.paymentTerms.length > 0 ? `<div style="padding:0 36px;margin-bottom:12px;">
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:10px 14px;">
+            <p style="font-size:9px;font-weight:700;color:#166534;margin:0 0 5px;">شروط الدفع / PAYMENT TERMS</p>
+            <ul style="margin:0;padding:0 14px;list-style-type:disc;">
+              ${cfg.paymentTerms.map(t => `<li style="font-size:10px;color:#374151;margin-bottom:2px;line-height:1.6;">${this._escHtml(t)}</li>`).join('')}
+            </ul>
+          </div>
+        </div>` : ''}
+
+        <!-- T&C -->
+        ${cfg.showTermsAndConditions && cfg.termsAndConditions.length > 0 ? `<div style="padding:0 36px;margin-bottom:14px;">
+          <div style="background:#fafbff;border:1px solid #e8ecf4;border-radius:6px;padding:10px 14px;">
+            <p style="font-size:9px;font-weight:700;color:${pc};margin:0 0 5px;">الشروط والأحكام / TERMS & CONDITIONS</p>
+            <ol style="margin:0;padding:0 16px;list-style-type:decimal;">
+              ${cfg.termsAndConditions.map(t => `<li style="font-size:10px;color:#4b5563;margin-bottom:2px;line-height:1.6;">${this._escHtml(t)}</li>`).join('')}
+            </ol>
+          </div>
+        </div>` : ''}
+
+        <!-- Signature -->
+        ${cfg.showSignatureArea ? `<div style="padding:0 36px;margin-bottom:16px;">
+          <div style="display:flex;gap:24px;">
+            <div style="flex:1;border:1px solid #e5e7eb;border-radius:8px;padding:14px 16px;text-align:center;">
+              <p style="font-size:9px;font-weight:700;color:${pc};margin:0 0 5px;">الطرف الأول / مقدم العرض</p>
+              <p style="font-size:11px;font-weight:600;color:#374151;margin:0 0 3px;">${this._escHtml(cfg.companyName)}</p>
+              <div style="height:50px;"></div>
+              <div style="border-top:1px solid #d1d5db;padding-top:6px;">
+                <p style="font-size:9px;color:#9ca3af;margin:0;">التوقيع: .........................................</p>
+                <p style="font-size:9px;color:#9ca3af;margin:2px 0 0;">الاسم: .........................................</p>
+                <p style="font-size:9px;color:#9ca3af;margin:2px 0 0;">التاريخ: .........................................</p>
+              </div>
+            </div>
+            <div style="flex:1;border:1px solid #e5e7eb;border-radius:8px;padding:14px 16px;text-align:center;">
+              <p style="font-size:9px;font-weight:700;color:${pc};margin:0 0 5px;">الطرف الثاني / العميل</p>
+              <p style="font-size:11px;font-weight:600;color:#374151;margin:0 0 3px;">${this._escHtml(clientName)}${clientCompany ? ' - ' + this._escHtml(clientCompany) : ''}</p>
+              <div style="height:50px;"></div>
+              <div style="border-top:1px solid #d1d5db;padding-top:6px;">
+                <p style="font-size:9px;color:#9ca3af;margin:0;">التوقيع: .........................................</p>
+                <p style="font-size:9px;color:#9ca3af;margin:2px 0 0;">الاسم: .........................................</p>
+                <p style="font-size:9px;color:#9ca3af;margin:2px 0 0;">التاريخ: .........................................</p>
+              </div>
+            </div>
+          </div>
+        </div>` : ''}
+
+        <!-- Footer -->
+        <div style="padding:12px 36px;background:${pc};text-align:center;">
+          <p style="font-size:10px;color:#fff;margin:0;font-weight:500;">${this._escHtml(cfg.footerText)}</p>
+          <p style="font-size:8px;color:#ffffff99;margin:3px 0 0;">${this._escHtml(cfg.companyName)} | ${quoteNumber}</p>
+        </div>
+        <div style="height:4px;background:linear-gradient(90deg,${sc},${pc});"></div>
+      </div>
+    `, `عرض-أتعاب-${quoteNumber || 'draft'}`);
+  },
+
+  // ========================================
+  // Core PDF Print Engine (Browser-based, perfect Arabic)
+  // ========================================
+  _printPdfHtml(htmlContent, fileName) {
+    // Create a new window for printing
+    const printWindow = window.open('', '_blank', 'width=800,height=1100');
+    if (!printWindow) {
+      this.toast('يرجى السماح بالنوافذ المنبثقة لتصدير PDF', 'error');
+      return;
+    }
+    
+    printWindow.document.write(`<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${this._escHtml(fileName)}</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: 'IBM Plex Sans Arabic', 'Noto Sans Arabic', sans-serif; 
+      direction: rtl; 
+      color: #1a1a2e; 
+      line-height: 1.6;
+      background: #fff;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    @page { 
+      size: A4; 
+      margin: 8mm 0 8mm 0; 
+    }
+    @media print {
+      body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      .no-print { display: none !important; }
+    }
+    .print-actions { 
+      position: fixed; top: 10px; left: 50%; transform: translateX(-50%); 
+      z-index: 9999; display: flex; gap: 8px; background: #fff; padding: 12px 20px; 
+      border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); border: 1px solid #e5e7eb;
+    }
+    .print-actions button {
+      padding: 8px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; 
+      cursor: pointer; border: none; font-family: 'IBM Plex Sans Arabic', sans-serif;
+    }
+    .btn-print { background: #1e3a8a; color: #fff; }
+    .btn-print:hover { background: #1e40af; }
+    .btn-close { background: #f3f4f6; color: #374151; }
+    .btn-close:hover { background: #e5e7eb; }
+    table { page-break-inside: avoid; }
+  </style>
+</head>
+<body>
+  <div class="no-print print-actions">
+    <button class="btn-print" onclick="window.print()">&#128424; طباعة / حفظ PDF</button>
+    <button class="btn-close" onclick="window.close()">&#10005; إغلاق</button>
+  </div>
+  <div id="pdf-content" style="max-width:210mm;margin:0 auto;">
+    ${htmlContent}
+  </div>
+</body>
+</html>`);
+    printWindow.document.close();
+    this.toast('تم فتح نافذة الطباعة - اختر "حفظ كـ PDF" للتصدير');
+  },
+
+
+    async deleteQuote(id) { if (!confirm('حذف هذا العرض؟ لا يمكن التراجع.')) return; try { await this.api('DELETE', `/api/quotes/${id}`); this.toast('تم حذف العرض'); history.pushState(null,'','/quotes'); this.route(); } catch(e) { this.toast(e.message,'error'); } },
 
   // ========================================
   // Kanban Board
@@ -1884,6 +2002,607 @@ const App = {
     } catch(e) {
       this.toast('فشل إنشاء المعاينة: ' + e.message, 'error');
     }
+  },
+
+  // ========================================
+  // PDF Template Manager (Multi-Template System)
+  // ========================================
+
+  // Default template text
+  _defaultQuoteTemplate() {
+    return `عرض أتعاب - تقييم الأصول الثابتة (الآلات والمعدات)
+
+رقم العرض: {{quote_number}}
+التاريخ: {{quote_date}}
+
+السادة/ {{client_name}}
+شركة/ {{company_name}}
+
+الموضوع: {{subject}}
+
+السلام عليكم ورحمة الله وبركاته،
+
+نود أن نتقدم لكم بخالص الشكر والتقدير على ثقتكم بشركة {{company_name_internal}}، ويسعدنا أن نقدم لكم عرضنا الفني والمالي لتنفيذ مهمة {{service_type}}، وذلك وفقًا لأفضل المعايير المهنية المعتمدة.
+
+--------------------------------------------------
+
+أولاً: نبذة عن الشركة
+
+{{company_name_internal}} هي شركة متخصصة في تقييم الأصول والآلات والمعدات، ومرخصة من الهيئة السعودية للمقيمين المعتمدين، وتضم نخبة من الخبراء المعتمدين ذوي الخبرة العملية والعلمية، مع الالتزام الكامل بالمعايير الدولية للتقييم وقواعد وأخلاقيات المهنة.
+
+--------------------------------------------------
+
+ثانياً: الهدف من التقييم
+
+بدأ تقييم الآلات والمعدات كتقييم محاسبي بنسبة إهلاك محددة لكل نوع من المعدات والآلات عن طريق المحاسبين، وبمرور الزمن وجد المتعاملين مع هذا النوع من التقييم أنه لا يعكس الصورة الحقيقية لقيمة الآلات والمعدات، لذلك تم اللجوء للخبراء المختصين في تقييم المعدات والذي يعكس في النهاية القيمة السوقية العادلة للمعدات والآلات مع الأخذ بعين الاعتبار حالة المعدات الفنية وقدرتها الإنتاجية والتغير التكنولوجي المثالي الذي حدث للمعدة.
+
+--------------------------------------------------
+
+ثالثاً: نطاق العمل
+
+يشمل نطاق العمل ما يلي:
+
+{{scope_of_work}}
+
+--------------------------------------------------
+
+رابعاً: آلية التنفيذ
+
+سيتم تنفيذ العمل وفق الخطوات التالية:
+
+1. استلام التكليف الرسمي
+2. تشكيل فريق العمل المناسب
+3. جمع البيانات والمستندات
+4. المعاينة الميدانية والفحص الفني
+5. تحليل البيانات
+6. إعداد التقرير النهائي
+
+--------------------------------------------------
+
+خامساً: الجدول الزمني
+
+سنسعى لبدء العمل الميداني خلال {{start_days}} أيام من الموافقة. ونتوقع أن يتم الانتهاء من العمل الميداني والتقييم الخاص بنا في غضون {{duration_days}} يوم عمل من استلام البيانات كاملة.
+
+--------------------------------------------------
+
+سادساً: مسؤوليات العميل
+
+أن أداء خبير التقييم يعتمد على الأداء الفعال في الوقت المناسب لمسؤوليات العميل المنصوص عليها في هذا الاقتراح والقرارات والموافقات في الوقت المناسب.
+
+--------------------------------------------------
+
+سابعاً: الأتعاب المالية
+
+قيمة الأتعاب: {{fees}} ريال سعودي
+ضريبة القيمة المضافة ({{vat_percentage}}%): {{vat}}
+الإجمالي: {{total}} ريال سعودي
+
+--------------------------------------------------
+
+ثامناً: شروط الدفع
+
+- 50% دفعة مقدمة عند الموافقة
+- 50% عند تسليم مسودة التقرير
+
+--------------------------------------------------
+
+تاسعاً: صلاحية العرض
+
+هذا العرض صالح لمدة {{validity_days}} يوم من تاريخ الإصدار.
+
+--------------------------------------------------
+
+عاشراً: الشروط العامة
+
+في حالة زيادة نطاق عملنا، أو إذا لم يكن الموظفون قادرين على توفير مستوى الدعم المشار إليه في هذا العرض، فسوف نناقش هذا الأمر على وجه السرعة مع المديرين التنفيذيين قبل الشروع في العمل.
+
+--------------------------------------------------
+
+الحادي عشر: البيانات البنكية
+
+اسم المستفيد: {{company_name_internal}}
+اسم البنك: {{bank_name}}
+رقم الآيبان: {{iban}}
+
+--------------------------------------------------
+
+الثاني عشر: خدمة العميل
+
+هدفنا هو تزويد العميل بخدمة عالية الجودة لتلبية احتياجاتك. نحن نقدر إتاحة الفرصة لنا لتقديم الخدمة ونتطلع إلى العمل معك بشأن هذه المشاركة.
+
+--------------------------------------------------
+
+الثالث عشر: القبول والتوقيع
+
+يرجى التكرم بتوقيع هذا العرض وإعادته بما يفيد الموافقة:
+
+الاسم: __________
+التوقيع: ________
+التاريخ: ________
+
+--------------------------------------------------
+
+وتفضلوا بقبول فائق الاحترام والتقدير،،
+
+{{prepared_by}}
+{{job_title}}
+{{company_name_internal}}`;
+  },
+
+  // Default variable values
+  _defaultQuoteVars() {
+    return {
+      quote_number: 'QT-2026-0001',
+      quote_date: new Date().toLocaleDateString('ar-SA', { year: 'numeric', month: 'long', day: 'numeric' }),
+      client_name: 'محمد أحمد العلي',
+      company_name: 'شركة النخبة للمقاولات',
+      subject: 'تقييم الأصول الثابتة (الآلات والمعدات)',
+      company_name_internal: 'شركة التقييم المحترفة',
+      service_type: 'تقييم الأصول الثابتة',
+      scope_of_work: '- تقييم جميع الآلات والمعدات الثابتة\n- إعداد تقرير تقييم شامل وفق المعايير الدولية\n- تحديد القيمة السوقية العادلة لكل أصل',
+      start_days: '5',
+      duration_days: '15',
+      fees: '50,000',
+      vat_percentage: '15',
+      vat: '7,500',
+      total: '57,500',
+      validity_days: '30',
+      bank_name: 'البنك الأهلي السعودي',
+      iban: 'SA00 0000 0000 0000 0000 0000',
+      prepared_by: 'م. أحمد محمد',
+      job_title: 'مدير التقييم',
+    };
+  },
+
+  // ---- Multi-Template Storage ----
+  getPdfTemplatesList() {
+    try {
+      const saved = localStorage.getItem('pdfTemplates');
+      if (saved) return JSON.parse(saved);
+    } catch(e) {}
+    return [];
+  },
+
+  savePdfTemplatesList(list) {
+    localStorage.setItem('pdfTemplates', JSON.stringify(list));
+  },
+
+  getPdfTemplate(id) {
+    return this.getPdfTemplatesList().find(t => t.id === id) || null;
+  },
+
+  savePdfTemplate(template) {
+    const list = this.getPdfTemplatesList();
+    const idx = list.findIndex(t => t.id === template.id);
+    if (idx >= 0) list[idx] = template;
+    else list.push(template);
+    this.savePdfTemplatesList(list);
+  },
+
+  deletePdfTemplate(id) {
+    const list = this.getPdfTemplatesList().filter(t => t.id !== id);
+    this.savePdfTemplatesList(list);
+  },
+
+  getQuoteVars() {
+    try {
+      const saved = localStorage.getItem('quoteVars');
+      if (saved) return { ...this._defaultQuoteVars(), ...JSON.parse(saved) };
+    } catch(e) {}
+    return { ...this._defaultQuoteVars() };
+  },
+
+  saveQuoteVars(vars) {
+    localStorage.setItem('quoteVars', JSON.stringify(vars));
+  },
+
+  getCompanyLogo() {
+    try { return localStorage.getItem('companyLogoPNG') || ''; } catch(e) { return ''; }
+  },
+
+  saveCompanyLogo(base64) { localStorage.setItem('companyLogoPNG', base64); },
+
+  _extractVars(template) {
+    const matches = template.match(/\{\{(\w+)\}\}/g) || [];
+    return [...new Set(matches.map(m => m.replace(/\{\{|\}\}/g, '')))];
+  },
+
+  _applyVars(template, vars) {
+    let result = template;
+    for (const [key, value] of Object.entries(vars)) {
+      result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value || '');
+    }
+    return result;
+  },
+
+  // ========================================
+  // Quote Template Manager (قالب العرض)
+  // ========================================
+  renderQuoteTemplateManager() {
+    const templates = this.getPdfTemplatesList();
+    const logo = this.getCompanyLogo();
+
+    this.setContent(`
+      <div class="fade-in space-y-6">
+        <div class="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 class="text-2xl font-bold text-gray-800"><i class="fas fa-file-contract ml-2 text-primary-500"></i>إدارة قوالب العروض</h1>
+            <p class="text-gray-500 text-sm mt-1">أنشئ قوالب نصية لعروض الأتعاب واستخدمها عند تصدير PDF</p>
+          </div>
+          <button onclick="App.createNewPdfTemplate()" class="bg-primary-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-primary-700 flex items-center gap-2 shadow-sm">
+            <i class="fas fa-plus"></i> قالب جديد
+          </button>
+        </div>
+
+        <!-- Company Logo -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <h3 class="font-bold text-gray-800 mb-3 pb-2 border-b border-gray-100"><i class="fas fa-image ml-2 text-green-500"></i>شعار الشركة (PNG)</h3>
+          <div class="flex items-center gap-4">
+            <div id="logo-preview" class="w-20 h-20 border-2 border-dashed border-gray-300 rounded-xl flex items-center justify-center bg-gray-50 overflow-hidden">
+              ${logo ? '<img src="' + logo + '" class="max-w-full max-h-full object-contain" />' : '<i class="fas fa-cloud-upload-alt text-2xl text-gray-400"></i>'}
+            </div>
+            <div class="flex-1">
+              <input type="file" id="logo-upload" accept="image/png,image/jpeg" onchange="App.handleLogoUpload(event)" class="hidden" />
+              <button type="button" onclick="document.getElementById('logo-upload').click()" class="bg-green-50 text-green-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-100 transition-colors mb-2">
+                <i class="fas fa-upload ml-1"></i>رفع شعار
+              </button>
+              ${logo ? '<button type="button" onclick="App.removeLogo()" class="bg-red-50 text-red-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors mb-2 mr-2"><i class="fas fa-trash ml-1"></i>حذف</button>' : ''}
+              <p class="text-xs text-gray-400">PNG أو JPG - يُدمج داخل PDF مباشرة</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Templates List -->
+        ${templates.length === 0 ? `
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
+          <div class="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4"><i class="fas fa-file-contract text-3xl text-amber-500"></i></div>
+          <h3 class="text-lg font-medium text-gray-700 mb-2">لا توجد قوالب بعد</h3>
+          <p class="text-gray-400 text-sm mb-6">أنشئ قالب نصي لعروض الأتعاب مع دعم المتغيرات <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs">{{variable}}</code></p>
+          <button onclick="App.createNewPdfTemplate()" class="bg-primary-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-primary-700"><i class="fas fa-plus ml-1"></i> إنشاء قالب</button>
+        </div>
+        ` : `
+        <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          ${templates.map(t => `
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+              <div class="flex justify-between items-start mb-3">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center"><i class="fas fa-file-contract text-amber-600"></i></div>
+                  <div>
+                    <h3 class="font-semibold text-gray-800">${this._escHtml(t.name)}</h3>
+                    <p class="text-xs text-gray-400 mt-0.5">${this._extractVars(t.content).length} متغير</p>
+                  </div>
+                </div>
+                <button onclick="App.deletePdfTemplateConfirm('${t.id}')" class="text-red-400 hover:text-red-600 p-1 rounded-lg hover:bg-red-50"><i class="fas fa-trash text-xs"></i></button>
+              </div>
+              <p class="text-xs text-gray-500 line-clamp-2 mb-3">${this._escHtml(t.content.substring(0, 120))}...</p>
+              <div class="flex gap-2">
+                <button onclick="App.editPdfTemplate('${t.id}')" class="flex-1 text-center bg-primary-50 text-primary-700 px-3 py-2 rounded-lg text-xs font-medium hover:bg-primary-100">
+                  <i class="fas fa-edit ml-1"></i>تعديل
+                </button>
+                <button onclick="App.previewPdfTemplateById('${t.id}')" class="flex-1 text-center bg-gray-50 text-gray-700 px-3 py-2 rounded-lg text-xs font-medium hover:bg-gray-100">
+                  <i class="fas fa-eye ml-1"></i>معاينة
+                </button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+        `}
+
+        <!-- Help info -->
+        <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-5">
+          <h3 class="font-semibold text-blue-800 mb-2"><i class="fas fa-info-circle ml-2"></i>كيف يعمل نظام القوالب؟</h3>
+          <ul class="text-sm text-blue-700 space-y-1.5">
+            <li>&#8226; أنشئ قوالب نصية مع متغيرات مثل <code class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">{{client_name}}</code> و <code class="bg-blue-100 px-1.5 py-0.5 rounded text-xs">{{fees}}</code></li>
+            <li>&#8226; عند تصدير عرض كـ PDF، اختر القالب المناسب وسيتم تعبئة المتغيرات تلقائياً من بيانات العرض</li>
+            <li>&#8226; النص العربي يُعرض بشكل مثالي - قابل للنسخ والبحث في PDF</li>
+            <li>&#8226; الشعار يُدمج داخل الملف مباشرة (ليس كرابط خارجي)</li>
+          </ul>
+        </div>
+      </div>
+    `);
+  },
+
+  createNewPdfTemplate() {
+    const id = 'tpl_' + Date.now();
+    const template = {
+      id: id,
+      name: 'قالب جديد',
+      content: this._defaultQuoteTemplate(),
+      createdAt: new Date().toISOString(),
+    };
+    this.savePdfTemplate(template);
+    this.editPdfTemplate(id);
+  },
+
+  editPdfTemplate(id) {
+    const template = this.getPdfTemplate(id);
+    if (!template) { this.toast('القالب غير موجود', 'error'); return; }
+    
+    const vars = this._extractVars(template.content);
+    const savedVars = this.getQuoteVars();
+
+    this.setContent(`
+      <div class="fade-in space-y-6">
+        <div class="flex items-center justify-between flex-wrap gap-3">
+          <div class="flex items-center gap-3">
+            <a href="/quote-template" data-link class="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-500"><i class="fas fa-arrow-right"></i></a>
+            <div>
+              <h1 class="text-2xl font-bold text-gray-800"><i class="fas fa-edit ml-2 text-primary-500"></i>تعديل القالب</h1>
+              <p class="text-gray-500 text-sm mt-1">محرر نصي مع دعم المتغيرات</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="App.previewPdfTemplateById('${id}')" class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-xl text-sm font-medium hover:bg-gray-50">
+              <i class="fas fa-eye ml-1"></i>معاينة
+            </button>
+            <button onclick="App.exportPdfTemplateStandalone('${id}')" class="bg-primary-600 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-primary-700">
+              <i class="fas fa-file-pdf ml-1"></i>تصدير PDF
+            </button>
+          </div>
+        </div>
+
+        <div class="grid lg:grid-cols-3 gap-6">
+          <!-- Editor (2/3) -->
+          <div class="lg:col-span-2 space-y-4">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <div class="mb-3">
+                <label class="block text-sm font-medium text-gray-700 mb-1.5">اسم القالب</label>
+                <input type="text" id="tpl-name" value="${this._escAttr(template.name)}" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" placeholder="مثال: عرض تقييم أصول" />
+              </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <div class="flex items-center justify-between mb-3 pb-2 border-b border-gray-100">
+                <h3 class="font-bold text-gray-800"><i class="fas fa-edit ml-2 text-primary-500"></i>محرر القالب</h3>
+                <button onclick="App._insertVarPopup()" class="bg-amber-50 text-amber-700 px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-amber-100">
+                  <i class="fas fa-code ml-1"></i>إدراج متغير
+                </button>
+              </div>
+              <textarea id="tpl-editor" rows="30" dir="rtl" 
+                class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm leading-7 resize-y"
+                style="font-family: 'IBM Plex Sans Arabic', monospace; min-height: 600px;"
+                oninput="App._onTplEditorChange('${id}')">${this._escHtml(template.content)}</textarea>
+              <div class="flex items-center justify-between mt-2">
+                <p class="text-xs text-gray-400"><i class="fas fa-info-circle ml-1"></i>استخدم <code class="bg-gray-100 px-1 rounded">{{variable_name}}</code> لإدراج متغيرات</p>
+                <button onclick="App._saveTplFromEditor('${id}')" class="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-700">
+                  <i class="fas fa-save ml-1"></i>حفظ القالب
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Variables (1/3) -->
+          <div class="space-y-4">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 sticky top-20">
+              <h3 class="font-bold text-gray-800 mb-3 pb-2 border-b border-gray-100">
+                <i class="fas fa-tags ml-2 text-amber-500"></i>المتغيرات <span class="text-xs text-gray-400 font-normal" id="var-count">(${vars.length})</span>
+              </h3>
+              <div id="vars-panel" class="space-y-3 max-h-[65vh] overflow-y-auto pr-1">
+                ${vars.map(v => `
+                  <div class="group">
+                    <label class="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1">
+                      <code class="bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded text-[10px]">{{${v}}}</code>
+                    </label>
+                    ${v === 'scope_of_work' ? 
+                      '<textarea id="var-' + v + '" rows="3" class="qt-var w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none" data-var="' + v + '">' + this._escHtml(savedVars[v] || '') + '</textarea>' :
+                      '<input type="text" id="var-' + v + '" class="qt-var w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" data-var="' + v + '" value="' + this._escAttr(savedVars[v] || '') + '" />'
+                    }
+                  </div>
+                `).join('')}
+              </div>
+              <div class="flex items-center gap-2 mt-4 pt-3 border-t border-gray-100">
+                <button onclick="App._saveVarsFromPanel()" class="flex-1 bg-amber-500 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-amber-600">
+                  <i class="fas fa-save ml-1"></i>حفظ المتغيرات
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `);
+  },
+
+  _onTplEditorChange(id) {
+    const editor = document.getElementById('tpl-editor');
+    if (!editor) return;
+    const vars = this._extractVars(editor.value);
+    const countEl = document.getElementById('var-count');
+    if (countEl) countEl.textContent = '(' + vars.length + ')';
+    
+    // Update vars panel
+    const panel = document.getElementById('vars-panel');
+    if (!panel) return;
+    const savedVars = this.getQuoteVars();
+    const currentVals = {};
+    panel.querySelectorAll('.qt-var').forEach(el => { currentVals[el.dataset.var] = el.value; });
+    
+    const currentNames = [...panel.querySelectorAll('.qt-var')].map(el => el.dataset.var);
+    if (JSON.stringify(vars) !== JSON.stringify(currentNames)) {
+      panel.innerHTML = vars.map(v => {
+        const val = currentVals[v] || savedVars[v] || '';
+        return `<div class="group">
+          <label class="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1">
+            <code class="bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded text-[10px]">{{${v}}}</code>
+          </label>
+          ${v === 'scope_of_work' ? 
+            '<textarea id="var-' + v + '" rows="3" class="qt-var w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none" data-var="' + v + '">' + this._escHtml(val) + '</textarea>' :
+            '<input type="text" id="var-' + v + '" class="qt-var w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" data-var="' + v + '" value="' + this._escAttr(val) + '" />'
+          }
+        </div>`;
+      }).join('');
+    }
+  },
+
+  _saveTplFromEditor(id) {
+    const name = document.getElementById('tpl-name')?.value?.trim() || 'قالب بدون اسم';
+    const content = document.getElementById('tpl-editor')?.value || '';
+    const template = this.getPdfTemplate(id) || { id, createdAt: new Date().toISOString() };
+    template.name = name;
+    template.content = content;
+    template.updatedAt = new Date().toISOString();
+    this.savePdfTemplate(template);
+    this.toast('تم حفظ القالب بنجاح');
+  },
+
+  _saveVarsFromPanel() {
+    const vars = {};
+    document.querySelectorAll('.qt-var').forEach(el => { vars[el.dataset.var] = el.value; });
+    this.saveQuoteVars(vars);
+    this.toast('تم حفظ المتغيرات بنجاح');
+  },
+
+  _insertVarPopup() {
+    const editor = document.getElementById('tpl-editor');
+    const currentVars = editor ? this._extractVars(editor.value) : [];
+    const allVars = [...new Set([...currentVars, ...Object.keys(this._defaultQuoteVars())])];
+    
+    this.showModal(`
+      <div class="p-6">
+        <h3 class="text-lg font-bold text-gray-800 mb-4"><i class="fas fa-code ml-2 text-amber-500"></i>إدراج متغير</h3>
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-gray-700 mb-1.5">اسم المتغير (بالإنجليزية)</label>
+          <input type="text" id="new-var-name" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" dir="ltr" placeholder="e.g. client_email" />
+        </div>
+        <div class="bg-gray-50 rounded-xl p-3 mb-4">
+          <p class="text-xs font-medium text-gray-600 mb-2">أو اختر:</p>
+          <div class="flex flex-wrap gap-1.5">
+            ${allVars.map(v => `<button onclick="document.getElementById('new-var-name').value='${v}'" class="bg-white border border-gray-200 text-gray-600 px-2 py-1 rounded-lg text-xs hover:bg-amber-50 hover:border-amber-200 hover:text-amber-700">${v}</button>`).join('')}
+          </div>
+        </div>
+        <div class="flex justify-end gap-3">
+          <button onclick="App.closeModal()" class="px-4 py-2 rounded-xl text-sm text-gray-600 hover:bg-gray-100">إلغاء</button>
+          <button onclick="App._doInsertVar()" class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl text-sm font-medium">إدراج</button>
+        </div>
+      </div>
+    `);
+  },
+
+  _doInsertVar() {
+    const name = document.getElementById('new-var-name')?.value?.trim();
+    if (!name) { this.toast('أدخل اسم المتغير', 'warning'); return; }
+    const editor = document.getElementById('tpl-editor');
+    if (editor) {
+      const start = editor.selectionStart;
+      const end = editor.selectionEnd;
+      const varText = '{{' + name + '}}';
+      editor.value = editor.value.substring(0, start) + varText + editor.value.substring(end);
+      editor.selectionStart = editor.selectionEnd = start + varText.length;
+      editor.focus();
+    }
+    this.closeModal();
+  },
+
+  deletePdfTemplateConfirm(id) {
+    if (!confirm('حذف هذا القالب؟')) return;
+    this.deletePdfTemplate(id);
+    this.toast('تم حذف القالب', 'info');
+    this.renderQuoteTemplateManager();
+  },
+
+  previewPdfTemplateById(id) {
+    const template = this.getPdfTemplate(id);
+    if (!template) return;
+    const vars = this.getQuoteVars();
+    const filled = this._applyVars(template.content, vars);
+    const logo = this.getCompanyLogo();
+
+    this.showModal(`
+      <div class="p-4" style="max-width:700px;">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-bold text-gray-800"><i class="fas fa-eye ml-2 text-primary-500"></i>معاينة: ${this._escHtml(template.name)}</h3>
+          <button onclick="App.closeModal()" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times text-lg"></i></button>
+        </div>
+        <div style="max-height:70vh;overflow-y:auto;border:1px solid #e5e7eb;border-radius:12px;background:#fff;padding:30px;direction:rtl;font-family:'IBM Plex Sans Arabic',sans-serif;line-height:2;">
+          ${logo ? '<div style="text-align:center;margin-bottom:20px;"><img src="' + logo + '" style="max-height:80px;" /></div>' : ''}
+          <div style="white-space:pre-wrap;font-size:14px;color:#1a1a2e;">${this._escHtml(filled).replace(/--{10,}/g, '<hr style="border:none;border-top:2px solid #e5e7eb;margin:15px 0;">')}</div>
+        </div>
+      </div>
+    `);
+  },
+
+  // Export standalone template (from editor page)
+  exportPdfTemplateStandalone(id) {
+    // Save first
+    this._saveTplFromEditor(id);
+    this._saveVarsFromPanel();
+
+    const template = this.getPdfTemplate(id);
+    if (!template) { this.toast('القالب غير موجود', 'error'); return; }
+
+    const vars = this.getQuoteVars();
+    const cfg = this.getPdfSettings();
+    const logo = this.getCompanyLogo();
+    const pc = cfg.primaryColor || '#1e3a8a';
+
+    let filled = this._applyVars(template.content, vars);
+    
+    const htmlLines = filled.split('\n').map(line => {
+      const trimmed = line.trim();
+      if (/^-{10,}$/.test(trimmed)) return '<hr style="border:none;border-top:1.5px solid #d1d5db;margin:12px 0;">';
+      if (trimmed === '') return '<div style="height:8px;"></div>';
+      if (/^(أولاً|ثانياً|ثالثاً|رابعاً|خامساً|سادساً|سابعاً|ثامناً|تاسعاً|عاشراً|الحادي عشر|الثاني عشر|الثالث عشر)/.test(trimmed)) {
+        return '<h3 style="font-size:14px;font-weight:800;color:' + pc + ';margin:18px 0 6px;padding:6px 12px;border-right:4px solid ' + pc + ';background:' + pc + '08;">' + this._escHtml(trimmed) + '</h3>';
+      }
+      if (trimmed.startsWith('- ')) return '<div style="padding:2px 0;margin-right:16px;font-size:12px;color:#374151;">&#8226; ' + this._escHtml(trimmed.substring(2)) + '</div>';
+      if (/^\d+\./.test(trimmed)) return '<div style="padding:2px 0;margin-right:16px;font-size:12px;color:#374151;">' + this._escHtml(trimmed) + '</div>';
+      return '<p style="font-size:12px;line-height:2;color:#1a1a2e;margin:0 0 4px;">' + this._escHtml(trimmed) + '</p>';
+    }).join('');
+
+    this._printPdfHtml(`
+      <div style="padding:0;margin:0;">
+        <div style="height:5px;background:linear-gradient(90deg,${pc},${cfg.secondaryColor});"></div>
+        <div style="padding:24px 36px 16px;display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #e5e7eb;">
+          <div style="flex:1;">
+            ${logo ? '<img src="' + logo + '" style="height:50px;margin-bottom:8px;" />' : ''}
+            <h2 style="font-size:18px;font-weight:800;color:${pc};margin:0;">${this._escHtml(cfg.companyName)}</h2>
+            ${cfg.companyNameEn ? '<p style="font-size:10px;color:#6b7280;margin:2px 0 0;">' + this._escHtml(cfg.companyNameEn) + '</p>' : ''}
+          </div>
+          <div style="text-align:left;min-width:180px;">
+            <div style="background:${pc};color:#fff;border-radius:8px;padding:14px 18px;text-align:center;">
+              <h1 style="font-size:20px;font-weight:800;margin:0;">عرض أتعاب</h1>
+              <p style="font-size:10px;margin:3px 0 0;opacity:0.85;">Fee Proposal</p>
+            </div>
+            <div style="background:#f0f4ff;border:1px solid #dbeafe;border-radius:6px;padding:8px 12px;margin-top:8px;text-align:center;">
+              <p style="font-size:9px;color:#6b7280;margin:0;">رقم العرض</p>
+              <p style="font-size:14px;font-weight:800;color:${pc};margin:2px 0 0;">${this._escHtml(vars.quote_number || '')}</p>
+            </div>
+          </div>
+        </div>
+        <div style="padding:20px 36px;">
+          ${htmlLines}
+        </div>
+        <div style="padding:12px 36px;background:${pc};text-align:center;margin-top:20px;">
+          <p style="font-size:10px;color:#fff;margin:0;">${this._escHtml(cfg.footerText)}</p>
+        </div>
+        <div style="height:4px;background:linear-gradient(90deg,${cfg.secondaryColor},${pc});"></div>
+      </div>
+    `, 'عرض-أتعاب-' + (vars.quote_number || 'draft'));
+  },
+
+  handleLogoUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { this.toast('حجم الملف كبير جداً (الحد الأقصى 2MB)', 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      this.saveCompanyLogo(e.target.result);
+      this.toast('تم رفع الشعار بنجاح');
+      this.renderQuoteTemplateManager();
+    };
+    reader.readAsDataURL(file);
+  },
+
+  removeLogo() {
+    if (!confirm('حذف شعار الشركة؟')) return;
+    localStorage.removeItem('companyLogoPNG');
+    this.toast('تم حذف الشعار', 'info');
+    this.renderQuoteTemplateManager();
+  },
+
+
+  _hexToRGB(hex) {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)] : [30, 58, 138];
   },
 
 };

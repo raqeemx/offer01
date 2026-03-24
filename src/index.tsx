@@ -55,6 +55,9 @@ app.get('*', (c) => {
                 <a href="/templates" data-link class="nav-link px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 hover:text-primary-600 hover:bg-primary-50 transition-colors">
                   <i class="fas fa-layer-group ml-1"></i> القوالب
                 </a>
+                <a href="/quote-template" data-link class="nav-link px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 hover:text-primary-600 hover:bg-primary-50 transition-colors">
+                  <i class="fas fa-file-contract ml-1"></i> قالب العرض
+                </a>
                 <a href="/projects" data-link class="nav-link px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 hover:text-primary-600 hover:bg-primary-50 transition-colors">
                   <i class="fas fa-project-diagram ml-1"></i> المشاريع
                 </a>
@@ -91,6 +94,9 @@ app.get('*', (c) => {
           </a>
           <a href="/templates" data-link class="nav-link flex-shrink-0 text-center px-2.5 py-1.5 rounded-lg text-[10px] font-medium text-gray-600">
             <i class="fas fa-layer-group block text-base mb-0.5"></i>القوالب
+          </a>
+          <a href="/quote-template" data-link class="nav-link flex-shrink-0 text-center px-2.5 py-1.5 rounded-lg text-[10px] font-medium text-gray-600">
+            <i class="fas fa-file-contract block text-base mb-0.5"></i>قالب العرض
           </a>
           <a href="/projects" data-link class="nav-link flex-shrink-0 text-center px-2.5 py-1.5 rounded-lg text-[10px] font-medium text-gray-600">
             <i class="fas fa-project-diagram block text-base mb-0.5"></i>المشاريع
