@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
 import { authMiddleware } from '../lib/auth'
+import type { AppEnv } from '../lib/types'
 
-const templates = new Hono()
+const templates = new Hono<AppEnv>()
 templates.use('*', authMiddleware)
 
 // قائمة القوالب

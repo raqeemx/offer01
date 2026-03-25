@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
 import { authMiddleware } from '../lib/auth'
+import type { AppEnv } from '../lib/types'
 
-const clients = new Hono()
+const clients = new Hono<AppEnv>()
 
 clients.use('*', authMiddleware)
 

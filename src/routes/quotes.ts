@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
 import { authMiddleware } from '../lib/auth'
+import type { AppEnv } from '../lib/types'
 
-const quotes = new Hono()
+const quotes = new Hono<AppEnv>()
 quotes.use('*', authMiddleware)
 
 // ---- Helper: إضافة حدث للـ Timeline ----

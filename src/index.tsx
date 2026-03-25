@@ -6,9 +6,9 @@ import clientRoutes from './routes/clients'
 import quoteRoutes from './routes/quotes'
 import templateRoutes from './routes/templates'
 import projectRoutes from './routes/projects'
+import type { AppEnv } from './lib/types'
 
-type Bindings = { SUPABASE_URL: string; SUPABASE_ANON_KEY: string }
-const app = new Hono<{ Bindings: Bindings }>()
+const app = new Hono<AppEnv>()
 
 app.use('*', cors())
 app.use(renderer)
