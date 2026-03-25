@@ -57,11 +57,25 @@ const App = {
     this.supabaseUrl = window.__SUPABASE_URL__ || '';
     this.supabaseKey = window.__SUPABASE_ANON_KEY__ || '';
     this.token = localStorage.getItem('token');
-    this.user = JSON.parse(localStorage.getItem('user') || 'null');
+    try {
+      this.user = JSON.parse(localStorage.getItem('user') || 'null');
+    } catch {
+      this.user = null;
+      localStorage.removeItem('user');
+      localStorage.removeItem('token');
+    }
     if (this.token && this.user) { this.showApp(); } else { this.showLogin(); }
     document.addEventListener('click', (e) => {
       const link = e.target.closest('[data-link]');
-      if (link) { e.preventDefault(); history.pushState(null, '', link.getAttribute('href')); this.route(); return; }
+      if (link) {
+        const href = link.getAttribute('href');
+        if (!href) return;
+        if (/^https?:\/\//i.test(href)) return;
+        e.preventDefault();
+        history.pushState(null, '', href);
+        this.route();
+        return;
+      }
 
       const actionEl = e.target.closest('[data-action]');
       if (!actionEl) return;
