@@ -1416,7 +1416,7 @@ const App = {
               `).join('')}
             </tbody>
           </table>
-        </div>` : ''}
+        </div>
 
         <!-- Totals -->
         <div style="padding:0 36px;margin-bottom:16px;">
