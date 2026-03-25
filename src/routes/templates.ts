@@ -23,6 +23,11 @@ templates.post('/', async (c) => {
   const { data: tmpl, error } = await supabase.from('quote_templates').insert({
     user_id: user.id, name: body.name, description: body.description || null,
     default_notes: body.default_notes || null, default_valid_days: body.default_valid_days || 30,
+    content: body.content || null,
+    variables_json: body.variables_json || null,
+    template_type: body.template_type || null,
+    service_type: body.service_type || null,
+    is_active: body.is_active ?? true,
   }).select().single();
   if (error) return c.json({ error: error.message }, 500);
 
