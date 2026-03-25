@@ -631,7 +631,7 @@ const App = {
           ${templates.length > 0 ? `
           <div class="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-4 mb-4">
             <label class="block text-sm font-medium text-amber-800 mb-2"><i class="fas fa-layer-group ml-1"></i> استخدام قالب جاهز</label>
-            <select id="quote-template" onchange="App.loadTemplate()" class="w-full border border-amber-300 rounded-xl px-4 py-2.5 text-sm bg-white"><option value="">بدون قالب</option>${templates.map(t => `<option value="${t.id}" ${t.id===preTemplate?'selected':''}>${t.name} (${(t.template_items||[]).length} بند)</option>`).join('')}</select>
+            <select id="quote-template" onchange="App.loadTemplate()" class="w-full border border-amber-300 rounded-xl px-4 py-2.5 text-sm bg-white"><option value="">بدون قالب</option>${templates.map(t => `<option value="${t.id}">${t.name} (${(t.template_items||[]).length} بند)</option>`).join('')}</select>
             <p class="text-xs text-amber-700 mt-2">عند اختيار قالب يحتوي محتوى نصي، سيتم إنشاء العرض من القالب مع معاينة المحتوى النهائي قبل الحفظ.</p>
           </div>` : ''}
 
@@ -823,7 +823,7 @@ const App = {
             <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
               <div class="flex justify-between items-center mb-3">
                 <h3 class="font-semibold text-gray-800"><i class="fas fa-file-signature ml-2 text-amber-500"></i>محتوى العرض النصي</h3>
-                <button type="button" onclick="App.updateQuotePreview('${id}')" class="text-amber-700 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-lg text-xs font-medium"><i class="fas fa-sync ml-1"></i> تحديث المعاينة</button>
+                <button type="button" onclick="App.previewQuoteEditContent()" class="text-amber-700 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-lg text-xs font-medium"><i class="fas fa-eye ml-1"></i> معاينة</button>
               </div>
               <div class="grid gap-3 lg:grid-cols-2">
                 <div>
@@ -883,23 +883,6 @@ const App = {
       return val === null || val === undefined ? '' : String(val);
     });
     previewEl.textContent = rendered || 'لا توجد معاينة.';
-  },
-
-  async updateQuotePreview(id) {
-    const previewEl = document.getElementById('quote-rendered-preview');
-    if (!previewEl) return;
-    try {
-      let vars = {};
-      const rawVars = document.getElementById('quote-variables-json')?.value || '{}';
-      if (rawVars.trim()) vars = JSON.parse(rawVars);
-      const editable = document.getElementById('quote-editable-content')?.value || '';
-      await this.api('PUT', `/api/quotes/${id}/content`, { editable_content: editable });
-      const updated = await this.api('POST', `/api/quotes/${id}/render`, { variables_json: vars });
-      previewEl.textContent = updated.rendered_content || 'لا توجد معاينة.';
-      this.toast('تم تحديث المعاينة');
-    } catch (e) {
-      this.toast(e.message, 'error');
-    }
   },
 
   // ---- تفاصيل عرض سعر ----
@@ -1397,7 +1380,7 @@ const App = {
           </div>
         </div>` : ''}
 
-        ${!renderedBlock ? `<!-- Items Table -->
+        <!-- Items Table -->
         <div style="padding:0 36px;margin-bottom:14px;">
           <p style="font-size:11px;font-weight:800;color:${pc};margin:0 0 8px;">بنود الأتعاب / SCOPE & FEES</p>
           <table style="width:100%;border-collapse:collapse;border:1px solid #d1d5db;">
@@ -1722,7 +1705,7 @@ const App = {
               </div>
               <div class="mt-3 pt-3 border-t border-gray-100 flex justify-between items-center">
                 <p class="text-sm font-bold text-primary-600">${this.fmtCurrency((t.template_items||[]).reduce((s,i)=>s+i.quantity*i.unit_price,0))}</p>
-                <a href="/quotes/new?template_id=${t.id}" data-link class="text-xs text-primary-600 hover:underline">استخدام القالب</a>
+                <a href="/quotes/new?template_id=${t.id}" data-link class="text-xs text-primary-600 hover:underline">استخدام</a>
               </div>
             </div>
           `).join('')}</div>`}
@@ -1741,17 +1724,52 @@ const App = {
 
     this.setContent(`
       <div class="fade-in max-w-5xl mx-auto">
-        <div class="flex items-center gap-3 mb-6"><a href="/templates" data-link class="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-500"><i class="fas fa-arrow-right"></i></a><h1 class="text-2xl font-bold text-gray-800">${id ? 'تعديل القالب' : 'إنشاء قالب جديد'}</h1></div>
-        <form onsubmit="App.createTemplate(event, '${id || ''}')" class="space-y-4">
+        <div class="flex items-center gap-3 mb-6"><a href="/templates" data-link class="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-500"><i class="fas fa-arrow-right"></i></a><h1 class="text-2xl font-bold text-gray-800">إنشاء قالب جديد</h1></div>
+        <form onsubmit="App.createTemplate(event)" class="space-y-4">
           <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
             <h3 class="font-semibold text-gray-800 mb-3"><i class="fas fa-info-circle ml-2 text-primary-500"></i>معلومات القالب</h3>
             <div class="grid gap-4 sm:grid-cols-2">
-              <div class="sm:col-span-2"><label class="block text-xs font-medium text-gray-600 mb-1">اسم القالب *</label><input type="text" id="tmpl-name" required class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" value="${template?.name || ''}" placeholder="مثال: قالب تصميم مواقع"/></div>
-              <div><label class="block text-xs font-medium text-gray-600 mb-1">الوصف</label><input type="text" id="tmpl-desc" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" value="${template?.description || ''}" placeholder="وصف مختصر للقالب"/></div>
-              <div><label class="block text-xs font-medium text-gray-600 mb-1">أيام الصلاحية الافتراضية</label><input type="number" id="tmpl-days" value="${template?.default_valid_days || 30}" min="1" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm"/></div>
-              <div class="sm:col-span-2"><label class="block text-xs font-medium text-gray-600 mb-1">ملاحظات افتراضية</label><input type="text" id="tmpl-notes" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" value="${template?.default_notes || ''}" placeholder="ملاحظات تضاف تلقائياً عند استخدام القالب"/></div>
-              <div><label class="block text-xs font-medium text-gray-600 mb-1">نوع القالب</label><input type="text" id="tmpl-type" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" value="${template?.template_type || (isFeePreset ? 'fee_proposal' : '')}"/></div>
-              <div><label class="block text-xs font-medium text-gray-600 mb-1">نوع الخدمة</label><input type="text" id="tmpl-service-type" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" value="${template?.service_type || (isFeePreset ? 'machinery_valuation' : '')}"/></div>
+              <div class="sm:col-span-2"><label class="block text-xs font-medium text-gray-600 mb-1">اسم القالب *</label><input type="text" id="tmpl-name" required class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" placeholder="مثال: قالب تصميم مواقع"/></div>
+              <div><label class="block text-xs font-medium text-gray-600 mb-1">الوصف</label><input type="text" id="tmpl-desc" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" placeholder="وصف مختصر للقالب"/></div>
+              <div><label class="block text-xs font-medium text-gray-600 mb-1">أيام الصلاحية الافتراضية</label><input type="number" id="tmpl-days" value="30" min="1" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm"/></div>
+              <div class="sm:col-span-2"><label class="block text-xs font-medium text-gray-600 mb-1">ملاحظات افتراضية</label><input type="text" id="tmpl-notes" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" placeholder="ملاحظات تضاف تلقائياً عند استخدام القالب"/></div>
+              <div><label class="block text-xs font-medium text-gray-600 mb-1">نوع القالب</label><input type="text" id="tmpl-type" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" value="fee_proposal"/></div>
+              <div><label class="block text-xs font-medium text-gray-600 mb-1">نوع الخدمة</label><input type="text" id="tmpl-service-type" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" value="machinery_valuation"/></div>
+            </div>
+          </div>
+          <div class="grid gap-4 lg:grid-cols-3">
+            <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <div class="flex justify-between items-center mb-3">
+                <h3 class="font-semibold text-gray-800"><i class="fas fa-file-signature ml-2 text-amber-500"></i>محتوى خطاب العرض</h3>
+                <button type="button" onclick="App.insertTemplateVariable('{{client_name}}')" class="text-xs text-primary-600 hover:bg-primary-50 px-2 py-1 rounded-lg">إدراج اسم العميل</button>
+              </div>
+              <textarea id="tmpl-content" rows="16" class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm whitespace-pre" dir="rtl">عرض أتعاب - تقييم الأصول الثابتة
+
+رقم العرض: {{quote_number}}
+التاريخ: {{quote_date}}
+
+السادة/ {{client_name}}
+
+الموضوع: {{subject}}
+
+{{scope_of_work}}
+
+الأتعاب: {{fees}}
+ضريبة القيمة المضافة: {{vat}}
+الإجمالي: {{total}}
+
+{{bank_name}}
+{{iban}}</textarea>
+              <div class="mt-3">
+                <label class="block text-xs font-medium text-gray-600 mb-1">متغيرات القالب (JSON)</label>
+                <textarea id="tmpl-vars-json" rows="5" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs font-mono" dir="ltr">{}</textarea>
+              </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <h3 class="font-semibold text-gray-800 mb-3"><i class="fas fa-code ml-2 text-primary-500"></i>المتغيرات</h3>
+              <div class="space-y-2">
+                ${['quote_number','quote_date','client_name','subject','scope_of_work','fees','vat','total','bank_name','iban'].map(v => `<button type="button" onclick="App.insertTemplateVariable('{{${v}}}')" class="w-full text-right text-xs bg-gray-50 hover:bg-primary-50 border border-gray-200 rounded-lg px-2 py-1.5 font-mono">{{${v}}}</button>`).join('')}
+              </div>
             </div>
           </div>
           <div class="grid gap-4 lg:grid-cols-3">
@@ -1806,7 +1824,7 @@ const App = {
       let vars = {};
       const rawVars = document.getElementById('tmpl-vars-json')?.value || '{}';
       if (rawVars.trim()) vars = JSON.parse(rawVars);
-      const payload = {
+      await this.api('POST', '/api/templates', {
         name: document.getElementById('tmpl-name').value,
         description: document.getElementById('tmpl-desc').value,
         default_notes: document.getElementById('tmpl-notes').value,
@@ -1817,15 +1835,8 @@ const App = {
         service_type: document.getElementById('tmpl-service-type')?.value || null,
         is_active: true,
         items
-      };
-      if (templateId) {
-        await this.api('PUT', `/api/templates/${templateId}`, payload);
-        this.toast('تم تحديث القالب بنجاح');
-      } else {
-        await this.api('POST', '/api/templates', payload);
-        this.toast('تم إنشاء القالب بنجاح');
-      }
-      history.pushState(null,'','/templates'); this.route();
+      });
+      this.toast('تم إنشاء القالب بنجاح'); history.pushState(null,'','/templates'); this.route();
     } catch(e) { this.toast(e.message,'error'); }
   },
 
