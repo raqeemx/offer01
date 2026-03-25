@@ -128,13 +128,24 @@ const App = {
   async api(method, url, body = null) {
     const headers = { 'Content-Type': 'application/json' };
     if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
-    const opts = { method, headers };
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const opts = { method, headers, signal: controller.signal };
     if (body) opts.body = JSON.stringify(body);
-    const res = await fetch(url, opts);
-    const data = await res.json();
-    if (res.status === 401) { this.logout(); throw new Error('غير مصرح'); }
-    if (!res.ok) throw new Error(data.error || 'حدث خطأ');
-    return data;
+    try {
+      const res = await fetch(url, opts);
+      const text = await res.text();
+      let data = {};
+      try { data = text ? JSON.parse(text) : {}; } catch {}
+      if (res.status === 401) { this.logout(); throw new Error('غير مصرح'); }
+      if (!res.ok) throw new Error(data.error || 'حدث خطأ');
+      return data;
+    } catch (e) {
+      if (e.name === 'AbortError') throw new Error('انتهت مهلة الاتصال بالخادم، حاول التحديث مرة أخرى');
+      throw e;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   },
 
   setContent(html) { document.getElementById('main-content').innerHTML = html; },
