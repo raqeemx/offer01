@@ -2566,6 +2566,42 @@ const App = {
     return result;
   },
 
+  renderTemplate(template, vars) {
+    return this._applyVars(template || '', vars || {});
+  },
+
+  _variableInputConfig(name) {
+    const map = {
+      client_name: { label: 'اسم العميل', type: 'text' },
+      quote_date: { label: 'تاريخ العرض', type: 'date' },
+      subject: { label: 'الموضوع', type: 'text' },
+      scope_of_work: { label: 'نطاق العمل', type: 'textarea' },
+      fees: { label: 'الأتعاب', type: 'number' },
+      vat: { label: 'الضريبة', type: 'number' },
+      total: { label: 'الإجمالي', type: 'number' },
+      bank_name: { label: 'اسم البنك', type: 'text' },
+      iban: { label: 'الآيبان', type: 'text' },
+    };
+    return map[name] || { label: name, type: 'text' };
+  },
+
+  _renderVariableFields(vars, values, templateId) {
+    return vars.map(v => {
+      const val = values?.[v] ?? '';
+      const cfg = this._variableInputConfig(v);
+      return `<div class="group">
+        <label class="flex items-center justify-between gap-1.5 text-xs font-medium text-gray-600 mb-1">
+          <span>${cfg.label}</span>
+          <code class="bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded text-[10px]">{{${v}}}</code>
+        </label>
+        ${cfg.type === 'textarea'
+          ? `<textarea id="var-${v}" rows="4" class="qt-var w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-y" data-var="${v}" oninput="App._onVariableInput('${templateId}', '${v}', this.value)">${this._escHtml(String(val))}</textarea>`
+          : `<input type="${cfg.type}" id="var-${v}" class="qt-var w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" data-var="${v}" value="${this._escAttr(String(val))}" oninput="App._onVariableInput('${templateId}', '${v}', this.value)" />`
+        }
+      </div>`;
+    }).join('');
+  },
+
   // ========================================
   // Quote Template Manager (قالب العرض)
   // ========================================
@@ -2670,7 +2706,8 @@ const App = {
     if (!template) { this.toast('القالب غير موجود', 'error'); return; }
     
     const vars = this._extractVars(template.content);
-    const savedVars = this.getQuoteVars();
+    const savedVars = { ...this.getQuoteVars(), ...(template.variables_json || {}) };
+    const renderedPreview = this.renderTemplate(template.content, savedVars);
 
     this.setContent(`
       <div class="fade-in space-y-6">
@@ -2693,8 +2730,24 @@ const App = {
         </div>
 
         <div class="grid lg:grid-cols-3 gap-6">
-          <!-- Editor (2/3) -->
-          <div class="lg:col-span-2 space-y-4">
+          <!-- Variable values (left) -->
+          <div class="space-y-4 lg:order-1">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 sticky top-20">
+              <h3 class="font-bold text-gray-800 mb-3 pb-2 border-b border-gray-100">
+                <i class="fas fa-sliders-h ml-2 text-amber-500"></i>قيم المتغيرات <span class="text-xs text-gray-400 font-normal" id="var-count">(${vars.length})</span>
+              </h3>
+              <div id="vars-panel" class="space-y-3 max-h-[65vh] overflow-y-auto pr-1">
+                ${this._renderVariableFields(vars, savedVars, id)}
+              </div>
+              <div class="mt-4 pt-3 border-t border-gray-100">
+                <label class="block text-xs font-medium text-gray-600 mb-1.5">variables_json</label>
+                <textarea id="tpl-variables-json" rows="7" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono" dir="ltr" readonly>${this._escHtml(JSON.stringify(template.variables_json || {}, null, 2))}</textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- Editor (right) -->
+          <div class="lg:col-span-2 space-y-4 lg:order-2">
             <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
               <div class="mb-3">
                 <label class="block text-sm font-medium text-gray-700 mb-1.5">اسم القالب</label>
@@ -2720,37 +2773,72 @@ const App = {
                 </button>
               </div>
             </div>
-          </div>
 
-          <!-- Variables (1/3) -->
-          <div class="space-y-4">
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 sticky top-20">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
               <h3 class="font-bold text-gray-800 mb-3 pb-2 border-b border-gray-100">
-                <i class="fas fa-tags ml-2 text-amber-500"></i>المتغيرات <span class="text-xs text-gray-400 font-normal" id="var-count">(${vars.length})</span>
+                <i class="fas fa-eye ml-2 text-primary-500"></i>المعاينة المباشرة
               </h3>
-              <div id="vars-panel" class="space-y-3 max-h-[65vh] overflow-y-auto pr-1">
-                ${vars.map(v => `
-                  <div class="group">
-                    <label class="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1">
-                      <code class="bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded text-[10px]">{{${v}}}</code>
-                    </label>
-                    ${v === 'scope_of_work' ? 
-                      '<textarea id="var-' + v + '" rows="3" class="qt-var w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none" data-var="' + v + '">' + this._escHtml(savedVars[v] || '') + '</textarea>' :
-                      '<input type="text" id="var-' + v + '" class="qt-var w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" data-var="' + v + '" value="' + this._escAttr(savedVars[v] || '') + '" />'
-                    }
-                  </div>
-                `).join('')}
-              </div>
-              <div class="flex items-center gap-2 mt-4 pt-3 border-t border-gray-100">
-                <button onclick="App._saveVarsFromPanel()" class="flex-1 bg-amber-500 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-amber-600">
-                  <i class="fas fa-save ml-1"></i>حفظ المتغيرات
-                </button>
-              </div>
+              <div id="tpl-live-preview" class="min-h-[220px] max-h-[360px] overflow-y-auto border border-gray-200 rounded-lg px-4 py-3 bg-gray-50 text-sm leading-7 whitespace-pre-wrap">${this._escHtml(renderedPreview)}</div>
             </div>
           </div>
         </div>
       </div>
     `);
+  },
+
+  _collectTemplateVariablesJson() {
+    const vars = {};
+    document.querySelectorAll('.qt-var').forEach(el => {
+      const key = el.dataset.var;
+      const rawValue = el.value;
+      const cfg = this._variableInputConfig(key);
+      if (cfg.type === 'number') {
+        vars[key] = rawValue === '' ? '' : Number(rawValue);
+      } else {
+        vars[key] = rawValue;
+      }
+    });
+    return vars;
+  },
+
+  _setVariablesJsonPreview(vars) {
+    const jsonEl = document.getElementById('tpl-variables-json');
+    if (jsonEl) jsonEl.value = JSON.stringify(vars, null, 2);
+  },
+
+  _onVariableInput(id, varName, value) {
+    const template = this.getPdfTemplate(id);
+    if (!template) return;
+    const vars = this._collectTemplateVariablesJson();
+    template.variables_json = vars;
+    template.updatedAt = new Date().toISOString();
+    this.savePdfTemplate(template);
+    this.saveQuoteVars(vars);
+    this._setVariablesJsonPreview(vars);
+    this._refreshTemplateLivePreview(id);
+  },
+
+  _refreshTemplateLivePreview(id) {
+    const previewEl = document.getElementById('tpl-live-preview');
+    const content = document.getElementById('tpl-editor')?.value || '';
+    const template = this.getPdfTemplate(id) || {};
+    const vars = this._collectTemplateVariablesJson();
+    const rendered = this.renderTemplate(content, vars);
+    if (previewEl) previewEl.textContent = rendered;
+    template.variables_json = vars;
+    template.updatedAt = new Date().toISOString();
+    this.savePdfTemplate(template);
+    this._setVariablesJsonPreview(vars);
+  },
+
+  _rebuildVarsPanel(id, vars, currentVals, savedVars) {
+    const panel = document.getElementById('vars-panel');
+    if (!panel) return;
+    const mergedVals = {};
+    vars.forEach(v => { mergedVals[v] = currentVals[v] ?? savedVars[v] ?? ''; });
+    panel.innerHTML = this._renderVariableFields(vars, mergedVals, id);
+    this._setVariablesJsonPreview(this._collectTemplateVariablesJson());
+    this._refreshTemplateLivePreview(id);
   },
 
   _onTplEditorChange(id) {
@@ -2762,25 +2850,20 @@ const App = {
     
     // Update vars panel
     const panel = document.getElementById('vars-panel');
-    if (!panel) return;
-    const savedVars = this.getQuoteVars();
+    if (!panel) {
+      this._refreshTemplateLivePreview(id);
+      return;
+    }
+    const template = this.getPdfTemplate(id) || {};
+    const savedVars = { ...this.getQuoteVars(), ...(template.variables_json || {}) };
     const currentVals = {};
     panel.querySelectorAll('.qt-var').forEach(el => { currentVals[el.dataset.var] = el.value; });
     
     const currentNames = [...panel.querySelectorAll('.qt-var')].map(el => el.dataset.var);
     if (JSON.stringify(vars) !== JSON.stringify(currentNames)) {
-      panel.innerHTML = vars.map(v => {
-        const val = currentVals[v] || savedVars[v] || '';
-        return `<div class="group">
-          <label class="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1">
-            <code class="bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded text-[10px]">{{${v}}}</code>
-          </label>
-          ${v === 'scope_of_work' ? 
-            '<textarea id="var-' + v + '" rows="3" class="qt-var w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none" data-var="' + v + '">' + this._escHtml(val) + '</textarea>' :
-            '<input type="text" id="var-' + v + '" class="qt-var w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" data-var="' + v + '" value="' + this._escAttr(val) + '" />'
-          }
-        </div>`;
-      }).join('');
+      this._rebuildVarsPanel(id, vars, currentVals, savedVars);
+    } else {
+      this._refreshTemplateLivePreview(id);
     }
   },
 
@@ -2790,15 +2873,28 @@ const App = {
     const template = this.getPdfTemplate(id) || { id, createdAt: new Date().toISOString() };
     template.name = name;
     template.content = content;
+    template.variables_json = this._collectTemplateVariablesJson();
     template.updatedAt = new Date().toISOString();
     this.savePdfTemplate(template);
+    this.saveQuoteVars(template.variables_json);
+    this._setVariablesJsonPreview(template.variables_json);
+    this._refreshTemplateLivePreview(id);
     this.toast('تم حفظ القالب بنجاح');
   },
 
-  _saveVarsFromPanel() {
-    const vars = {};
-    document.querySelectorAll('.qt-var').forEach(el => { vars[el.dataset.var] = el.value; });
+  _saveVarsFromPanel(id = null) {
+    const vars = this._collectTemplateVariablesJson();
     this.saveQuoteVars(vars);
+    if (id) {
+      const template = this.getPdfTemplate(id);
+      if (template) {
+        template.variables_json = vars;
+        template.updatedAt = new Date().toISOString();
+        this.savePdfTemplate(template);
+      }
+    }
+    this._setVariablesJsonPreview(vars);
+    if (id) this._refreshTemplateLivePreview(id);
     this.toast('تم حفظ المتغيرات بنجاح');
   },
 
@@ -2875,7 +2971,7 @@ const App = {
   exportPdfTemplateStandalone(id) {
     // Save first
     this._saveTplFromEditor(id);
-    this._saveVarsFromPanel();
+    this._saveVarsFromPanel(id);
 
     const template = this.getPdfTemplate(id);
     if (!template) { this.toast('القالب غير موجود', 'error'); return; }
