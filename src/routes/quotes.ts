@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { authMiddleware } from '../lib/auth'
+import { renderTemplate } from '../lib/templateRenderer'
 import type { AppEnv } from '../lib/types'
 
 const quotes = new Hono<AppEnv>()
@@ -141,6 +142,69 @@ quotes.post('/', async (c) => {
   return c.json(fullQuote, 201);
 });
 
+// ---- إنشاء عرض من قالب ----
+quotes.post('/from-template', async (c) => {
+  const supabase = c.get('supabase') as any;
+  const user = c.get('user') as any;
+  const body = await c.req.json();
+
+  if (!body.template_id || !body.client_id) {
+    return c.json({ error: 'template_id و client_id مطلوبان' }, 400);
+  }
+
+  const { data: template, error: templateError } = await supabase
+    .from('quote_templates')
+    .select('*, template_items(*)')
+    .eq('id', body.template_id)
+    .eq('user_id', user.id)
+    .single();
+  if (templateError || !template) return c.json({ error: 'القالب غير موجود' }, 404);
+
+  const { data: seqData, error: seqError } = await supabase.rpc('generate_quote_number', { p_user_id: user.id });
+  if (seqError) return c.json({ error: 'فشل في توليد رقم العرض: ' + seqError.message }, 500);
+
+  const templateVars = (template.variables_json && typeof template.variables_json === 'object') ? template.variables_json : {};
+  const requestVars = (body.variables_json && typeof body.variables_json === 'object') ? body.variables_json : {};
+  const mergedVariables = { ...templateVars, ...requestVars };
+
+  const editableContent = body.editable_content || template.content || '';
+  const renderedContent = renderTemplate(editableContent, mergedVariables);
+
+  const { data: quote, error: quoteError } = await supabase.from('quotes').insert({
+    user_id: user.id,
+    client_id: body.client_id,
+    quote_number: seqData,
+    title: body.title || template.name,
+    status: 'draft',
+    notes: body.notes || template.default_notes || null,
+    valid_until: body.valid_until || null,
+    next_followup_date: body.next_followup_date || null,
+    template_id: template.id,
+    template_snapshot: template.content || null,
+    variables_json: mergedVariables,
+    editable_content: editableContent || null,
+    rendered_content: renderedContent || null,
+    quote_type: body.quote_type || template.template_type || 'template',
+  }).select().single();
+  if (quoteError) return c.json({ error: quoteError.message }, 500);
+
+  if (template.template_items?.length > 0) {
+    const items = template.template_items.map((item: any) => ({
+      quote_id: quote.id,
+      description: item.description,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      sort_order: item.sort_order,
+    }));
+    await supabase.from('quote_items').insert(items);
+  }
+
+  await addTimeline(supabase, quote.id, user.id, 'created', `تم إنشاء العرض من القالب ${template.name}`);
+
+  const { data: fullQuote } = await supabase.from('quotes').select('*, clients(name, company), quote_items(*)').eq('id', quote.id).single();
+  return c.json(fullQuote, 201);
+});
+
 // ---- تفاصيل عرض سعر ----
 quotes.get('/:id', async (c) => {
   const supabase = c.get('supabase') as any;
@@ -214,6 +278,64 @@ quotes.put('/:id', async (c) => {
   await addTimeline(supabase, id, user.id, 'updated', 'تم تحديث العرض');
 
   const { data } = await supabase.from('quotes').select('*, clients(name, company), quote_items(*)').eq('id', id).single();
+  return c.json(data);
+});
+
+// ---- تحديث محتوى العرض النصي ----
+quotes.put('/:id/content', async (c) => {
+  const supabase = c.get('supabase') as any;
+  const user = c.get('user') as any;
+  const id = c.req.param('id');
+  const { editable_content } = await c.req.json();
+
+  const { data, error } = await supabase
+    .from('quotes')
+    .update({ editable_content: editable_content || null })
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .select()
+    .single();
+  if (error) return c.json({ error: error.message }, 500);
+
+  await addTimeline(supabase, id, user.id, 'updated', 'تم تحديث المحتوى النصي للعرض');
+  return c.json(data);
+});
+
+// ---- إعادة توليد المحتوى النصي النهائي ----
+quotes.post('/:id/render', async (c) => {
+  const supabase = c.get('supabase') as any;
+  const user = c.get('user') as any;
+  const id = c.req.param('id');
+  const body = await c.req.json();
+
+  const { data: quote } = await supabase
+    .from('quotes')
+    .select('id, user_id, editable_content, template_snapshot, variables_json')
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .single();
+  if (!quote) return c.json({ error: 'العرض غير موجود' }, 404);
+
+  const currentVariables = (quote.variables_json && typeof quote.variables_json === 'object') ? quote.variables_json : {};
+  const inputVariables = (body.variables_json && typeof body.variables_json === 'object') ? body.variables_json : {};
+  const mergedVariables = { ...currentVariables, ...inputVariables };
+
+  const sourceContent = quote.editable_content || quote.template_snapshot || '';
+  const renderedContent = renderTemplate(sourceContent, mergedVariables);
+
+  const { data, error } = await supabase
+    .from('quotes')
+    .update({
+      variables_json: mergedVariables,
+      rendered_content: renderedContent || null,
+    })
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .select()
+    .single();
+  if (error) return c.json({ error: error.message }, 500);
+
+  await addTimeline(supabase, id, user.id, 'updated', 'تم إعادة توليد المحتوى النهائي');
   return c.json(data);
 });
 
@@ -334,8 +456,8 @@ quotes.post('/:id/upload-pdf', async (c) => {
     const { data: urlData } = supabase.storage.from('quote-pdfs').getPublicUrl(filePath);
     const pdfUrl = urlData?.publicUrl || '';
 
-    // Save URL in quote record
-    await supabase.from('quotes').update({ pdf_url: pdfUrl }).eq('id', id).eq('user_id', user.id);
+    // Save URL/path in quote record
+    await supabase.from('quotes').update({ pdf_url: pdfUrl, pdf_file_path: filePath }).eq('id', id).eq('user_id', user.id);
     await addTimeline(supabase, id, user.id, 'pdf_generated', 'تم إنشاء وحفظ ملف PDF');
 
     return c.json({ pdf_url: pdfUrl, path: filePath });
@@ -349,9 +471,9 @@ quotes.patch('/:id/pdf', async (c) => {
   const supabase = c.get('supabase') as any;
   const user = c.get('user') as any;
   const id = c.req.param('id');
-  const { pdf_url } = await c.req.json();
+  const { pdf_url, pdf_file_path } = await c.req.json();
 
-  const { data, error } = await supabase.from('quotes').update({ pdf_url }).eq('id', id).eq('user_id', user.id).select().single();
+  const { data, error } = await supabase.from('quotes').update({ pdf_url, pdf_file_path: pdf_file_path || null }).eq('id', id).eq('user_id', user.id).select().single();
   if (error) return c.json({ error: error.message }, 500);
 
   await addTimeline(supabase, id, user.id, 'pdf_generated', 'تم إنشاء ملف PDF');
