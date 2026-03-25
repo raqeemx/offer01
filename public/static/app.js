@@ -1163,10 +1163,12 @@ const App = {
       if (!vars[key] || vars[key] === '') vars[key] = savedVars[key];
     }
 
-    // Fill template
-    let filled = template.content;
-    for (const [key, value] of Object.entries(vars)) {
-      filled = filled.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value || '');
+    // Fill template (or use pre-rendered content from quote if available)
+    let filled = (quote.rendered_content && String(quote.rendered_content).trim()) ? String(quote.rendered_content) : template.content;
+    if (!quote.rendered_content) {
+      for (const [key, value] of Object.entries(vars)) {
+        filled = filled.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value || '');
+      }
     }
 
     const pc = cfg.primaryColor || '#1e3a8a';
@@ -1216,7 +1218,7 @@ const App = {
         </div>
         <div style="height:4px;background:linear-gradient(90deg,${cfg.secondaryColor},${pc});"></div>
       </div>
-    `, `عرض-أتعاب-${quote.quote_number || 'draft'}`);
+    `, `عرض-أتعاب-${quote.quote_number || 'draft'}`, quote.id);
   },
 
   // Export using built-in table template
@@ -1239,6 +1241,13 @@ const App = {
     const quoteNumber = quote.quote_number || '';
     const quoteDate = this.fmtDate(quote.created_at);
     const validUntil = quote.valid_until ? this.fmtDate(quote.valid_until) : '';
+
+    const renderedBlock = (quote.rendered_content || '').trim();
+    const renderedLinesHtml = renderedBlock ? renderedBlock.split('\n').map(line => {
+      const t = this._escHtml((line || '').trim());
+      if (!t) return '<div style="height:8px;"></div>';
+      return `<p style="font-size:11px;line-height:2.1;color:#1f2937;margin:0 0 6px;white-space:pre-wrap;">${t}</p>`;
+    }).join('') : '';
 
     this._printPdfHtml(`
       <div style="padding:0;margin:0;">
@@ -1295,6 +1304,13 @@ const App = {
           <div style="background:${pc}08;border:1px solid ${sc}33;border-right:4px solid ${pc};border-radius:6px;padding:12px 16px;">
             <p style="font-size:9px;color:${pc};font-weight:700;margin:0 0 3px;">الموضوع / SUBJECT</p>
             <p style="font-size:14px;color:#1a1a2e;font-weight:700;margin:0;">${this._escHtml(quote.title)}</p>
+          </div>
+        </div>` : ''}
+
+        ${renderedLinesHtml ? `<div style="padding:0 36px;margin-bottom:14px;">
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:14px 16px;direction:rtl;text-align:right;">
+            <p style="font-size:11px;font-weight:800;color:${pc};margin:0 0 8px;">نص العرض</p>
+            ${renderedLinesHtml}
           </div>
         </div>` : ''}
 
@@ -1406,13 +1422,63 @@ const App = {
         </div>
         <div style="height:4px;background:linear-gradient(90deg,${sc},${pc});"></div>
       </div>
-    `, `عرض-أتعاب-${quoteNumber || 'draft'}`);
+    `, `عرض-أتعاب-${quoteNumber || 'draft'}`, quote.id);
   },
 
   // ========================================
   // Core PDF Print Engine (Browser-based, perfect Arabic)
   // ========================================
-  _printPdfHtml(htmlContent, fileName) {
+  async _printPdfHtml(htmlContent, fileName, quoteId = null) {
+    try {
+      await this._ensurePDFLibs();
+      const wrapper = document.createElement('div');
+      wrapper.style.position = 'fixed';
+      wrapper.style.right = '-99999px';
+      wrapper.style.top = '0';
+      wrapper.style.width = '794px';
+      wrapper.style.background = '#fff';
+      wrapper.style.direction = 'rtl';
+      wrapper.innerHTML = `<div style="width:100%;background:#fff;direction:rtl;line-height:1.9;padding:8px 0;">${htmlContent}</div>`;
+      document.body.appendChild(wrapper);
+
+      const canvas = await html2canvas(wrapper, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+      document.body.removeChild(wrapper);
+
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const imgData = canvas.toDataURL('image/png');
+      const pdfWidth = 210;
+      const pdfHeight = 297;
+      const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+      heightLeft -= pdfHeight;
+
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+        heightLeft -= pdfHeight;
+      }
+
+      if (quoteId) {
+        const dataUri = pdf.output('datauristring');
+        const base64Data = dataUri.split(',')[1];
+        const upload = await this.api('POST', `/api/quotes/${quoteId}/upload-pdf`, {
+          base64Data,
+          fileName: `${fileName}.pdf`
+        });
+        if (upload?.pdf_url) this.toast('تم إنشاء PDF وحفظه في التخزين السحابي');
+      }
+
+      pdf.save(`${fileName}.pdf`);
+      return;
+    } catch (e) {
+      console.warn('PDF binary generation failed, fallback to print window:', e);
+    }
+
     // Create a new window for printing
     const printWindow = window.open('', '_blank', 'width=800,height=1100');
     if (!printWindow) {

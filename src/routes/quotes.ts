@@ -456,8 +456,8 @@ quotes.post('/:id/upload-pdf', async (c) => {
     const { data: urlData } = supabase.storage.from('quote-pdfs').getPublicUrl(filePath);
     const pdfUrl = urlData?.publicUrl || '';
 
-    // Save URL in quote record
-    await supabase.from('quotes').update({ pdf_url: pdfUrl }).eq('id', id).eq('user_id', user.id);
+    // Save URL/path in quote record
+    await supabase.from('quotes').update({ pdf_url: pdfUrl, pdf_file_path: filePath }).eq('id', id).eq('user_id', user.id);
     await addTimeline(supabase, id, user.id, 'pdf_generated', 'تم إنشاء وحفظ ملف PDF');
 
     return c.json({ pdf_url: pdfUrl, path: filePath });
@@ -471,9 +471,9 @@ quotes.patch('/:id/pdf', async (c) => {
   const supabase = c.get('supabase') as any;
   const user = c.get('user') as any;
   const id = c.req.param('id');
-  const { pdf_url } = await c.req.json();
+  const { pdf_url, pdf_file_path } = await c.req.json();
 
-  const { data, error } = await supabase.from('quotes').update({ pdf_url }).eq('id', id).eq('user_id', user.id).select().single();
+  const { data, error } = await supabase.from('quotes').update({ pdf_url, pdf_file_path: pdf_file_path || null }).eq('id', id).eq('user_id', user.id).select().single();
   if (error) return c.json({ error: error.message }, 500);
 
   await addTimeline(supabase, id, user.id, 'pdf_generated', 'تم إنشاء ملف PDF');
