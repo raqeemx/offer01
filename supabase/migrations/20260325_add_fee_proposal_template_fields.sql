@@ -9,7 +9,6 @@ ALTER TABLE quote_templates
   ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
 
 ALTER TABLE quotes
-  ADD COLUMN IF NOT EXISTS template_id UUID REFERENCES quote_templates(id),
   ADD COLUMN IF NOT EXISTS template_snapshot TEXT,
   ADD COLUMN IF NOT EXISTS variables_json JSONB,
   ADD COLUMN IF NOT EXISTS editable_content TEXT,
