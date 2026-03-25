@@ -616,6 +616,7 @@ const App = {
           <div class="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-4 mb-4">
             <label class="block text-sm font-medium text-amber-800 mb-2"><i class="fas fa-layer-group ml-1"></i> استخدام قالب جاهز</label>
             <select id="quote-template" onchange="App.loadTemplate()" class="w-full border border-amber-300 rounded-xl px-4 py-2.5 text-sm bg-white"><option value="">بدون قالب</option>${templates.map(t => `<option value="${t.id}">${t.name} (${(t.template_items||[]).length} بند)</option>`).join('')}</select>
+            <p class="text-xs text-amber-700 mt-2">عند اختيار قالب يحتوي محتوى نصي، سيتم إنشاء العرض من القالب مع معاينة المحتوى النهائي قبل الحفظ.</p>
           </div>` : ''}
 
           <form onsubmit="App.createQuote(event)" class="space-y-4">
@@ -636,6 +637,29 @@ const App = {
                 ${this._itemRow()}
               </div>
               <div class="mt-4 pt-4 border-t-2 border-primary-100 flex justify-between items-center"><span class="font-semibold text-gray-700 text-lg">الإجمالي</span><span id="quote-total" class="text-2xl font-bold text-primary-600">0.00 ر.س</span></div>
+            </div>
+
+            <div id="quote-template-content-card" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hidden">
+              <div class="flex justify-between items-center mb-3">
+                <h3 class="font-semibold text-gray-800"><i class="fas fa-file-alt ml-2 text-amber-500"></i>محتوى العرض من القالب</h3>
+                <button type="button" onclick="App.previewTemplateQuote()" class="text-amber-700 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-lg text-xs font-medium"><i class="fas fa-eye ml-1"></i> معاينة</button>
+              </div>
+              <div class="grid gap-3 lg:grid-cols-2">
+                <div>
+                  <label class="block text-xs font-medium text-gray-600 mb-1">المحتوى القابل للتعديل</label>
+                  <textarea id="quote-editable-content" rows="14" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm font-mono" dir="rtl" placeholder="اكتب نص العرض باستخدام المتغيرات {{client_name}} ..."></textarea>
+                </div>
+                <div class="space-y-3">
+                  <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">المتغيرات (JSON)</label>
+                    <textarea id="quote-variables-json" rows="6" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs font-mono" dir="ltr" placeholder='{"client_name":"شركة ألف","subject":"تقييم أصول ثابتة"}'></textarea>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">المعاينة</label>
+                    <div id="quote-rendered-preview" class="min-h-[170px] border border-gray-200 rounded-xl p-3 bg-gray-50 text-sm whitespace-pre-wrap"></div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div class="flex justify-end gap-3"><a href="/quotes" data-link class="px-4 py-2.5 rounded-xl text-sm text-gray-600 hover:bg-gray-100">إلغاء</a><button type="submit" id="save-quote-btn" class="bg-primary-600 hover:bg-primary-700 text-white px-8 py-2.5 rounded-xl text-sm font-medium shadow-sm"><i class="fas fa-save ml-1"></i> حفظ العرض</button></div>
@@ -674,7 +698,13 @@ const App = {
 
   loadTemplate() {
     const tid = document.getElementById('quote-template')?.value;
-    if (!tid) return;
+    const contentCard = document.getElementById('quote-template-content-card');
+    if (!tid) {
+      if (contentCard) contentCard.classList.add('hidden');
+      const saveBtn = document.getElementById('save-quote-btn');
+      if (saveBtn) saveBtn.innerHTML = '<i class="fas fa-save ml-1"></i> حفظ العرض';
+      return;
+    }
     const tmpl = (window._templates||[]).find(t => t.id === tid);
     if (!tmpl) return;
     if (tmpl.default_notes) document.getElementById('quote-notes').value = tmpl.default_notes;
@@ -684,15 +714,65 @@ const App = {
       container.insertAdjacentHTML('beforeend', this._itemRow(item));
     });
     if ((tmpl.template_items||[]).length === 0) container.insertAdjacentHTML('beforeend', this._itemRow());
+    if (tmpl.content) {
+      if (contentCard) contentCard.classList.remove('hidden');
+      const contentEl = document.getElementById('quote-editable-content');
+      const varsEl = document.getElementById('quote-variables-json');
+      if (contentEl) contentEl.value = tmpl.content;
+      if (varsEl) varsEl.value = JSON.stringify(tmpl.variables_json || {}, null, 2);
+      this.previewTemplateQuote();
+      const saveBtn = document.getElementById('save-quote-btn');
+      if (saveBtn) saveBtn.innerHTML = '<i class="fas fa-file-import ml-1"></i> إنشاء من القالب';
+    } else {
+      if (contentCard) contentCard.classList.add('hidden');
+    }
     this.calcTotal();
     this.toast('تم تحميل القالب', 'info');
+  },
+
+  previewTemplateQuote() {
+    const content = document.getElementById('quote-editable-content')?.value || '';
+    const previewEl = document.getElementById('quote-rendered-preview');
+    if (!previewEl) return;
+    let vars = {};
+    try {
+      const raw = document.getElementById('quote-variables-json')?.value?.trim();
+      vars = raw ? JSON.parse(raw) : {};
+    } catch {
+      previewEl.textContent = 'صيغة JSON غير صحيحة في المتغيرات.';
+      return;
+    }
+    const rendered = content.replace(/\{\{\s*([^{}\s]+)\s*\}\}/g, (_, key) => {
+      const val = vars?.[key];
+      return val === null || val === undefined ? '' : String(val);
+    });
+    previewEl.textContent = rendered || 'لا توجد معاينة.';
   },
 
   async createQuote(e) {
     e.preventDefault(); const btn = document.getElementById('save-quote-btn'); btn.disabled = true;
     const items = []; document.querySelectorAll('.quote-item').forEach(item => { items.push({ description: item.querySelector('[name="description"]').value, quantity: parseFloat(item.querySelector('[name="quantity"]').value), unit_price: parseFloat(item.querySelector('[name="unit_price"]').value) }); });
     try {
-      const quote = await this.api('POST', '/api/quotes', { client_id: document.getElementById('quote-client').value, title: document.getElementById('quote-title').value, notes: document.getElementById('quote-notes').value, valid_until: document.getElementById('quote-valid').value || null, next_followup_date: document.getElementById('quote-followup')?.value || null, template_id: document.getElementById('quote-template')?.value || null, items });
+      const templateId = document.getElementById('quote-template')?.value || null;
+      const editableContent = document.getElementById('quote-editable-content')?.value || '';
+      const rawVars = document.getElementById('quote-variables-json')?.value || '';
+      let variables = {};
+      if (rawVars.trim()) variables = JSON.parse(rawVars);
+
+      const payload = {
+        client_id: document.getElementById('quote-client').value,
+        title: document.getElementById('quote-title').value,
+        notes: document.getElementById('quote-notes').value,
+        valid_until: document.getElementById('quote-valid').value || null,
+        next_followup_date: document.getElementById('quote-followup')?.value || null,
+        template_id: templateId,
+        items
+      };
+
+      const quote = (templateId && editableContent.trim())
+        ? await this.api('POST', '/api/quotes/from-template', { ...payload, editable_content: editableContent, variables_json: variables })
+        : await this.api('POST', '/api/quotes', payload);
+
       this.toast('تم إنشاء العرض بنجاح'); history.pushState(null, '', `/quotes/${quote.id}`); this.route();
     } catch (e) { this.toast(e.message, 'error'); btn.disabled = false; }
   },
@@ -1083,10 +1163,12 @@ const App = {
       if (!vars[key] || vars[key] === '') vars[key] = savedVars[key];
     }
 
-    // Fill template
-    let filled = template.content;
-    for (const [key, value] of Object.entries(vars)) {
-      filled = filled.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value || '');
+    // Fill template (or use pre-rendered content from quote if available)
+    let filled = (quote.rendered_content && String(quote.rendered_content).trim()) ? String(quote.rendered_content) : template.content;
+    if (!quote.rendered_content) {
+      for (const [key, value] of Object.entries(vars)) {
+        filled = filled.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value || '');
+      }
     }
 
     const pc = cfg.primaryColor || '#1e3a8a';
@@ -1136,7 +1218,7 @@ const App = {
         </div>
         <div style="height:4px;background:linear-gradient(90deg,${cfg.secondaryColor},${pc});"></div>
       </div>
-    `, `عرض-أتعاب-${quote.quote_number || 'draft'}`);
+    `, `عرض-أتعاب-${quote.quote_number || 'draft'}`, quote.id);
   },
 
   // Export using built-in table template
@@ -1159,6 +1241,13 @@ const App = {
     const quoteNumber = quote.quote_number || '';
     const quoteDate = this.fmtDate(quote.created_at);
     const validUntil = quote.valid_until ? this.fmtDate(quote.valid_until) : '';
+
+    const renderedBlock = (quote.rendered_content || '').trim();
+    const renderedLinesHtml = renderedBlock ? renderedBlock.split('\n').map(line => {
+      const t = this._escHtml((line || '').trim());
+      if (!t) return '<div style="height:8px;"></div>';
+      return `<p style="font-size:11px;line-height:2.1;color:#1f2937;margin:0 0 6px;white-space:pre-wrap;">${t}</p>`;
+    }).join('') : '';
 
     this._printPdfHtml(`
       <div style="padding:0;margin:0;">
@@ -1215,6 +1304,13 @@ const App = {
           <div style="background:${pc}08;border:1px solid ${sc}33;border-right:4px solid ${pc};border-radius:6px;padding:12px 16px;">
             <p style="font-size:9px;color:${pc};font-weight:700;margin:0 0 3px;">الموضوع / SUBJECT</p>
             <p style="font-size:14px;color:#1a1a2e;font-weight:700;margin:0;">${this._escHtml(quote.title)}</p>
+          </div>
+        </div>` : ''}
+
+        ${renderedLinesHtml ? `<div style="padding:0 36px;margin-bottom:14px;">
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:14px 16px;direction:rtl;text-align:right;">
+            <p style="font-size:11px;font-weight:800;color:${pc};margin:0 0 8px;">نص العرض</p>
+            ${renderedLinesHtml}
           </div>
         </div>` : ''}
 
@@ -1326,13 +1422,63 @@ const App = {
         </div>
         <div style="height:4px;background:linear-gradient(90deg,${sc},${pc});"></div>
       </div>
-    `, `عرض-أتعاب-${quoteNumber || 'draft'}`);
+    `, `عرض-أتعاب-${quoteNumber || 'draft'}`, quote.id);
   },
 
   // ========================================
   // Core PDF Print Engine (Browser-based, perfect Arabic)
   // ========================================
-  _printPdfHtml(htmlContent, fileName) {
+  async _printPdfHtml(htmlContent, fileName, quoteId = null) {
+    try {
+      await this._ensurePDFLibs();
+      const wrapper = document.createElement('div');
+      wrapper.style.position = 'fixed';
+      wrapper.style.right = '-99999px';
+      wrapper.style.top = '0';
+      wrapper.style.width = '794px';
+      wrapper.style.background = '#fff';
+      wrapper.style.direction = 'rtl';
+      wrapper.innerHTML = `<div style="width:100%;background:#fff;direction:rtl;line-height:1.9;padding:8px 0;">${htmlContent}</div>`;
+      document.body.appendChild(wrapper);
+
+      const canvas = await html2canvas(wrapper, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+      document.body.removeChild(wrapper);
+
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const imgData = canvas.toDataURL('image/png');
+      const pdfWidth = 210;
+      const pdfHeight = 297;
+      const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+      heightLeft -= pdfHeight;
+
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+        heightLeft -= pdfHeight;
+      }
+
+      if (quoteId) {
+        const dataUri = pdf.output('datauristring');
+        const base64Data = dataUri.split(',')[1];
+        const upload = await this.api('POST', `/api/quotes/${quoteId}/upload-pdf`, {
+          base64Data,
+          fileName: `${fileName}.pdf`
+        });
+        if (upload?.pdf_url) this.toast('تم إنشاء PDF وحفظه في التخزين السحابي');
+      }
+
+      pdf.save(`${fileName}.pdf`);
+      return;
+    } catch (e) {
+      console.warn('PDF binary generation failed, fallback to print window:', e);
+    }
+
     // Create a new window for printing
     const printWindow = window.open('', '_blank', 'width=800,height=1100');
     if (!printWindow) {
@@ -1498,7 +1644,7 @@ const App = {
 
   renderTemplateForm() {
     this.setContent(`
-      <div class="fade-in max-w-3xl mx-auto">
+      <div class="fade-in max-w-5xl mx-auto">
         <div class="flex items-center gap-3 mb-6"><a href="/templates" data-link class="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-500"><i class="fas fa-arrow-right"></i></a><h1 class="text-2xl font-bold text-gray-800">إنشاء قالب جديد</h1></div>
         <form onsubmit="App.createTemplate(event)" class="space-y-4">
           <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
@@ -1508,6 +1654,43 @@ const App = {
               <div><label class="block text-xs font-medium text-gray-600 mb-1">الوصف</label><input type="text" id="tmpl-desc" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" placeholder="وصف مختصر للقالب"/></div>
               <div><label class="block text-xs font-medium text-gray-600 mb-1">أيام الصلاحية الافتراضية</label><input type="number" id="tmpl-days" value="30" min="1" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm"/></div>
               <div class="sm:col-span-2"><label class="block text-xs font-medium text-gray-600 mb-1">ملاحظات افتراضية</label><input type="text" id="tmpl-notes" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" placeholder="ملاحظات تضاف تلقائياً عند استخدام القالب"/></div>
+              <div><label class="block text-xs font-medium text-gray-600 mb-1">نوع القالب</label><input type="text" id="tmpl-type" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" value="fee_proposal"/></div>
+              <div><label class="block text-xs font-medium text-gray-600 mb-1">نوع الخدمة</label><input type="text" id="tmpl-service-type" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" value="machinery_valuation"/></div>
+            </div>
+          </div>
+          <div class="grid gap-4 lg:grid-cols-3">
+            <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <div class="flex justify-between items-center mb-3">
+                <h3 class="font-semibold text-gray-800"><i class="fas fa-file-signature ml-2 text-amber-500"></i>محتوى خطاب العرض</h3>
+                <button type="button" onclick="App.insertTemplateVariable('{{client_name}}')" class="text-xs text-primary-600 hover:bg-primary-50 px-2 py-1 rounded-lg">إدراج اسم العميل</button>
+              </div>
+              <textarea id="tmpl-content" rows="16" class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm whitespace-pre" dir="rtl">عرض أتعاب - تقييم الأصول الثابتة
+
+رقم العرض: {{quote_number}}
+التاريخ: {{quote_date}}
+
+السادة/ {{client_name}}
+
+الموضوع: {{subject}}
+
+{{scope_of_work}}
+
+الأتعاب: {{fees}}
+ضريبة القيمة المضافة: {{vat}}
+الإجمالي: {{total}}
+
+{{bank_name}}
+{{iban}}</textarea>
+              <div class="mt-3">
+                <label class="block text-xs font-medium text-gray-600 mb-1">متغيرات القالب (JSON)</label>
+                <textarea id="tmpl-vars-json" rows="5" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs font-mono" dir="ltr">{}</textarea>
+              </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <h3 class="font-semibold text-gray-800 mb-3"><i class="fas fa-code ml-2 text-primary-500"></i>المتغيرات</h3>
+              <div class="space-y-2">
+                ${['quote_number','quote_date','client_name','subject','scope_of_work','fees','vat','total','bank_name','iban'].map(v => `<button type="button" onclick="App.insertTemplateVariable('{{${v}}}')" class="w-full text-right text-xs bg-gray-50 hover:bg-primary-50 border border-gray-200 rounded-lg px-2 py-1.5 font-mono">{{${v}}}</button>`).join('')}
+              </div>
             </div>
           </div>
           <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
@@ -1524,9 +1707,34 @@ const App = {
     e.preventDefault();
     const items = []; document.querySelectorAll('.quote-item').forEach(item => { items.push({ description: item.querySelector('[name="description"]').value, quantity: parseFloat(item.querySelector('[name="quantity"]').value), unit_price: parseFloat(item.querySelector('[name="unit_price"]').value) }); });
     try {
-      await this.api('POST', '/api/templates', { name: document.getElementById('tmpl-name').value, description: document.getElementById('tmpl-desc').value, default_notes: document.getElementById('tmpl-notes').value, default_valid_days: parseInt(document.getElementById('tmpl-days').value)||30, items });
+      let vars = {};
+      const rawVars = document.getElementById('tmpl-vars-json')?.value || '{}';
+      if (rawVars.trim()) vars = JSON.parse(rawVars);
+      await this.api('POST', '/api/templates', {
+        name: document.getElementById('tmpl-name').value,
+        description: document.getElementById('tmpl-desc').value,
+        default_notes: document.getElementById('tmpl-notes').value,
+        default_valid_days: parseInt(document.getElementById('tmpl-days').value)||30,
+        content: document.getElementById('tmpl-content').value,
+        variables_json: vars,
+        template_type: document.getElementById('tmpl-type')?.value || null,
+        service_type: document.getElementById('tmpl-service-type')?.value || null,
+        is_active: true,
+        items
+      });
       this.toast('تم إنشاء القالب بنجاح'); history.pushState(null,'','/templates'); this.route();
     } catch(e) { this.toast(e.message,'error'); }
+  },
+
+  insertTemplateVariable(variable) {
+    const textarea = document.getElementById('tmpl-content');
+    if (!textarea) return;
+    const start = textarea.selectionStart || 0;
+    const end = textarea.selectionEnd || 0;
+    const current = textarea.value || '';
+    textarea.value = current.slice(0, start) + variable + current.slice(end);
+    textarea.focus();
+    textarea.selectionStart = textarea.selectionEnd = start + variable.length;
   },
 
   async deleteTemplate(id) { if (!confirm('حذف هذا القالب؟')) return; try { await this.api('DELETE',`/api/templates/${id}`); this.toast('تم حذف القالب'); this.renderTemplates(); } catch(e) { this.toast(e.message,'error'); } },
