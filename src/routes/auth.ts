@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
 import { getSupabase } from '../lib/supabase'
+import type { AppEnv } from '../lib/types'
 
-const auth = new Hono()
+const auth = new Hono<AppEnv>()
 
 // تسجيل الدخول
 auth.post('/login', async (c) => {

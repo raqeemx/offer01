@@ -1,7 +1,8 @@
 import { Context, Next } from 'hono'
 import { getSupabaseWithAuth } from './supabase'
+import type { AppEnv } from './types'
 
-export async function authMiddleware(c: Context, next: Next) {
+export async function authMiddleware(c: Context<AppEnv>, next: Next) {
   const token = c.req.header('Authorization')?.replace('Bearer ', '');
   
   if (!token) {
