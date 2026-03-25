@@ -91,6 +91,7 @@ const App = {
     else if (p === '/kanban') this.renderKanban();
     else if (p === '/templates') this.renderTemplates();
     else if (p === '/templates/new') this.renderTemplateForm();
+    else if (p.match(/^\/templates\/[\w-]+\/edit$/)) this.renderTemplateForm(p.split('/')[2]);
     else if (p === '/quote-template') this.renderQuoteTemplateManager();
     else if (p === '/projects') this.renderProjects();
     else if (p.match(/^\/projects\/[\w-]+$/)) this.renderProjectDetail(p.split('/')[2]);
@@ -603,6 +604,7 @@ const App = {
       const [clients, templates] = await Promise.all([this.api('GET', '/api/clients'), this.api('GET', '/api/templates')]);
       const params = new URLSearchParams(location.search);
       const preClient = params.get('client_id') || '';
+      const preTemplate = params.get('template_id') || '';
 
       if (clients.length === 0) { this.setContent(this._emptyState('fa-exclamation-triangle','أضف عميلاً أولاً','تحتاج لإضافة عميل قبل إنشاء عرض','/clients/new','إضافة عميل')); return; }
 
@@ -667,6 +669,7 @@ const App = {
         </div>
       `);
       window._templates = templates;
+      if (preTemplate) this.loadTemplate();
     } catch (e) { this.setContent(`<div class="text-center py-20 text-red-500">${e.message}</div>`); }
   },
 
@@ -802,6 +805,29 @@ const App = {
               </div>
               <div class="mt-4 pt-4 border-t-2 border-primary-100 flex justify-between items-center"><span class="font-semibold text-gray-700 text-lg">الإجمالي</span><span id="quote-total" class="text-2xl font-bold text-primary-600">${this.fmtCurrency(quote.total)}</span></div>
             </div>
+            ${(quote.template_id || quote.editable_content || quote.rendered_content) ? `
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <div class="flex justify-between items-center mb-3">
+                <h3 class="font-semibold text-gray-800"><i class="fas fa-file-signature ml-2 text-amber-500"></i>محتوى العرض النصي</h3>
+                <button type="button" onclick="App.previewQuoteEditContent()" class="text-amber-700 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-lg text-xs font-medium"><i class="fas fa-eye ml-1"></i> معاينة</button>
+              </div>
+              <div class="grid gap-3 lg:grid-cols-2">
+                <div>
+                  <label class="block text-xs font-medium text-gray-600 mb-1">المحتوى القابل للتعديل</label>
+                  <textarea id="quote-editable-content" rows="12" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" dir="rtl">${quote.editable_content || quote.template_snapshot || ''}</textarea>
+                </div>
+                <div class="space-y-3">
+                  <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">المتغيرات (JSON)</label>
+                    <textarea id="quote-variables-json" rows="5" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs font-mono" dir="ltr">${JSON.stringify(quote.variables_json || {}, null, 2)}</textarea>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">المحتوى النهائي</label>
+                    <div id="quote-rendered-preview" class="min-h-[170px] border border-gray-200 rounded-xl p-3 bg-gray-50 text-sm whitespace-pre-wrap">${quote.rendered_content || ''}</div>
+                  </div>
+                </div>
+              </div>
+            </div>` : ''}
             <div class="flex justify-end gap-3"><a href="/quotes/${id}" data-link class="px-4 py-2.5 rounded-xl text-sm text-gray-600 hover:bg-gray-100">إلغاء</a><button type="submit" id="save-quote-btn" class="bg-primary-600 hover:bg-primary-700 text-white px-8 py-2.5 rounded-xl text-sm font-medium shadow-sm"><i class="fas fa-save ml-1"></i> تحديث العرض</button></div>
           </form>
         </div>
@@ -815,8 +841,34 @@ const App = {
     const items = []; document.querySelectorAll('.quote-item').forEach(item => { items.push({ description: item.querySelector('[name="description"]').value, quantity: parseFloat(item.querySelector('[name="quantity"]').value), unit_price: parseFloat(item.querySelector('[name="unit_price"]').value) }); });
     try {
       await this.api('PUT', `/api/quotes/${id}`, { client_id: document.getElementById('quote-client').value, title: document.getElementById('quote-title').value, notes: document.getElementById('quote-notes').value, valid_until: document.getElementById('quote-valid').value || null, next_followup_date: document.getElementById('quote-followup')?.value || null, items });
+      if (document.getElementById('quote-editable-content')) {
+        let vars = {};
+        const rawVars = document.getElementById('quote-variables-json')?.value || '{}';
+        if (rawVars.trim()) vars = JSON.parse(rawVars);
+        await this.api('PUT', `/api/quotes/${id}/content`, { editable_content: document.getElementById('quote-editable-content').value });
+        await this.api('POST', `/api/quotes/${id}/render`, { variables_json: vars });
+      }
       this.toast('تم تحديث العرض'); history.pushState(null, '', `/quotes/${id}`); this.route();
     } catch (e) { this.toast(e.message, 'error'); btn.disabled = false; }
+  },
+
+  previewQuoteEditContent() {
+    const content = document.getElementById('quote-editable-content')?.value || '';
+    const previewEl = document.getElementById('quote-rendered-preview');
+    if (!previewEl) return;
+    let vars = {};
+    try {
+      const raw = document.getElementById('quote-variables-json')?.value?.trim();
+      vars = raw ? JSON.parse(raw) : {};
+    } catch {
+      previewEl.textContent = 'صيغة JSON غير صحيحة في المتغيرات.';
+      return;
+    }
+    const rendered = content.replace(/\{\{\s*([^{}\s]+)\s*\}\}/g, (_, key) => {
+      const val = vars?.[key];
+      return val === null || val === undefined ? '' : String(val);
+    });
+    previewEl.textContent = rendered || 'لا توجد معاينة.';
   },
 
   // ---- تفاصيل عرض سعر ----
@@ -1618,14 +1670,20 @@ const App = {
         <div class="fade-in">
           <div class="flex justify-between items-center mb-6">
             <div><h1 class="text-2xl font-bold text-gray-800"><i class="fas fa-layer-group ml-2 text-primary-500"></i>قوالب العروض</h1><p class="text-gray-500 text-sm mt-1">${templates.length} قالب</p></div>
-            <a href="/templates/new" data-link class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 shadow-sm"><i class="fas fa-plus"></i> قالب جديد</a>
+            <div class="flex gap-2">
+              <a href="/templates/new" data-link class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 shadow-sm"><i class="fas fa-plus"></i> قالب جديد</a>
+              <a href="/templates/new?preset=fee-proposal" data-link class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 shadow-sm"><i class="fas fa-file-contract"></i> قالب عرض أتعاب</a>
+            </div>
           </div>
           ${templates.length === 0 ? this._emptyState('fa-layer-group','لا توجد قوالب بعد','أنشئ قالبًا لتسريع إنشاء عروض الأسعار','/templates/new','قالب جديد') : `
           <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">${templates.map(t => `
             <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
               <div class="flex justify-between items-start mb-3">
                 <div><h3 class="font-semibold text-gray-800">${t.name}</h3>${t.description?`<p class="text-xs text-gray-500 mt-1">${t.description}</p>`:''}</div>
-                <button onclick="App.deleteTemplate('${t.id}')" class="text-red-400 hover:text-red-600 p-1 rounded-lg hover:bg-red-50"><i class="fas fa-trash text-xs"></i></button>
+                <div class="flex items-center gap-1">
+                  <a href="/templates/${t.id}/edit" data-link class="text-gray-400 hover:text-primary-600 p-1 rounded-lg hover:bg-primary-50"><i class="fas fa-edit text-xs"></i></a>
+                  <button onclick="App.deleteTemplate('${t.id}')" class="text-red-400 hover:text-red-600 p-1 rounded-lg hover:bg-red-50"><i class="fas fa-trash text-xs"></i></button>
+                </div>
               </div>
               <div class="flex items-center gap-4 text-xs text-gray-500">
                 <span class="flex items-center gap-1"><i class="fas fa-list-ul"></i>${(t.template_items||[]).length} بند</span>
@@ -1633,7 +1691,7 @@ const App = {
               </div>
               <div class="mt-3 pt-3 border-t border-gray-100 flex justify-between items-center">
                 <p class="text-sm font-bold text-primary-600">${this.fmtCurrency((t.template_items||[]).reduce((s,i)=>s+i.quantity*i.unit_price,0))}</p>
-                <a href="/quotes/new" data-link class="text-xs text-primary-600 hover:underline">استخدام</a>
+                <a href="/quotes/new?template_id=${t.id}" data-link class="text-xs text-primary-600 hover:underline">استخدام</a>
               </div>
             </div>
           `).join('')}</div>`}
@@ -1642,7 +1700,14 @@ const App = {
     } catch (e) { this.setContent(`<div class="text-center py-20 text-red-500">${e.message}</div>`); }
   },
 
-  renderTemplateForm() {
+  async renderTemplateForm(id = null) {
+    let template = null;
+    if (id) {
+      try { template = await this.api('GET', `/api/templates/${id}`); } catch {}
+    }
+    const params = new URLSearchParams(location.search);
+    const isFeePreset = params.get('preset') === 'fee-proposal' || (template && template.template_type === 'fee_proposal');
+
     this.setContent(`
       <div class="fade-in max-w-5xl mx-auto">
         <div class="flex items-center gap-3 mb-6"><a href="/templates" data-link class="w-10 h-10 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-500"><i class="fas fa-arrow-right"></i></a><h1 class="text-2xl font-bold text-gray-800">إنشاء قالب جديد</h1></div>
@@ -1693,17 +1758,52 @@ const App = {
               </div>
             </div>
           </div>
-          <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-            <div class="flex justify-between items-center mb-3"><h3 class="font-semibold text-gray-800"><i class="fas fa-list-ul ml-2 text-primary-500"></i>البنود الافتراضية</h3><button type="button" onclick="App.addItem()" class="text-primary-600 text-sm font-medium hover:bg-primary-50 px-3 py-1 rounded-lg"><i class="fas fa-plus ml-1"></i> إضافة بند</button></div>
-            <div id="quote-items" class="space-y-2">${this._itemRow()}</div>
+          <div class="grid gap-4 lg:grid-cols-3">
+            <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <div class="flex justify-between items-center mb-3">
+                <h3 class="font-semibold text-gray-800"><i class="fas fa-file-signature ml-2 text-amber-500"></i>محتوى خطاب العرض</h3>
+                <button type="button" onclick="App.insertTemplateVariable('{{client_name}}')" class="text-xs text-primary-600 hover:bg-primary-50 px-2 py-1 rounded-lg">إدراج اسم العميل</button>
+              </div>
+              <textarea id="tmpl-content" rows="16" class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm whitespace-pre" dir="rtl">${template?.content || `عرض أتعاب - تقييم الأصول الثابتة
+
+رقم العرض: {{quote_number}}
+التاريخ: {{quote_date}}
+
+السادة/ {{client_name}}
+
+الموضوع: {{subject}}
+
+{{scope_of_work}}
+
+الأتعاب: {{fees}}
+ضريبة القيمة المضافة: {{vat}}
+الإجمالي: {{total}}
+
+{{bank_name}}
+{{iban}`}</textarea>
+              <div class="mt-3">
+                <label class="block text-xs font-medium text-gray-600 mb-1">متغيرات القالب (JSON)</label>
+                <textarea id="tmpl-vars-json" rows="5" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-xs font-mono" dir="ltr">${JSON.stringify(template?.variables_json || {}, null, 2)}</textarea>
+              </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <h3 class="font-semibold text-gray-800 mb-3"><i class="fas fa-code ml-2 text-primary-500"></i>المتغيرات</h3>
+              <div class="space-y-2">
+                ${['quote_number','quote_date','client_name','subject','scope_of_work','fees','vat','total','bank_name','iban'].map(v => `<button type="button" onclick="App.insertTemplateVariable('{{${v}}}')" class="w-full text-right text-xs bg-gray-50 hover:bg-primary-50 border border-gray-200 rounded-lg px-2 py-1.5 font-mono">{{${v}}}</button>`).join('')}
+              </div>
+            </div>
           </div>
-          <div class="flex justify-end gap-3"><a href="/templates" data-link class="px-4 py-2.5 rounded-xl text-sm text-gray-600 hover:bg-gray-100">إلغاء</a><button type="submit" id="save-tmpl-btn" class="bg-primary-600 hover:bg-primary-700 text-white px-8 py-2.5 rounded-xl text-sm font-medium shadow-sm"><i class="fas fa-save ml-1"></i> حفظ القالب</button></div>
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <div class="flex justify-between items-center mb-3"><h3 class="font-semibold text-gray-800"><i class="fas fa-list-ul ml-2 text-primary-500"></i>البنود الافتراضية</h3><button type="button" onclick="App.addItem()" class="text-primary-600 text-sm font-medium hover:bg-primary-50 px-3 py-1 rounded-lg"><i class="fas fa-plus ml-1"></i> إضافة بند</button></div>
+            <div id="quote-items" class="space-y-2">${(template?.template_items || []).map(item => this._itemRow(item)).join('') || this._itemRow()}</div>
+          </div>
+          <div class="flex justify-end gap-3"><a href="/templates" data-link class="px-4 py-2.5 rounded-xl text-sm text-gray-600 hover:bg-gray-100">إلغاء</a><button type="submit" id="save-tmpl-btn" class="bg-primary-600 hover:bg-primary-700 text-white px-8 py-2.5 rounded-xl text-sm font-medium shadow-sm"><i class="fas fa-save ml-1"></i> ${id ? 'تحديث القالب' : 'حفظ القالب'}</button></div>
         </form>
       </div>
     `);
   },
 
-  async createTemplate(e) {
+  async createTemplate(e, templateId = '') {
     e.preventDefault();
     const items = []; document.querySelectorAll('.quote-item').forEach(item => { items.push({ description: item.querySelector('[name="description"]').value, quantity: parseFloat(item.querySelector('[name="quantity"]').value), unit_price: parseFloat(item.querySelector('[name="unit_price"]').value) }); });
     try {
