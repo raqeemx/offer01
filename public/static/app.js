@@ -1866,7 +1866,16 @@ const App = {
     });
   },
 
-  _escAttr(s) { return (s || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); },
+  _escHtml(s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  },
+
+  _escAttr(s) { return this._escHtml(s); },
 
   _addPaymentTerm() {
     const list = document.getElementById('payment-terms-list');
