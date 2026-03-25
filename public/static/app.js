@@ -68,7 +68,8 @@ const App = {
 
   // ---- Router ----
   route() {
-    const p = location.pathname;
+    const rawPath = location.pathname || '/';
+    const p = rawPath.length > 1 ? rawPath.replace(/\/+$/, '') : rawPath;
     this.updateActiveNav(p);
     if (p === '/' || p === '') this.renderDashboard();
     else if (p === '/clients') this.renderClients();
