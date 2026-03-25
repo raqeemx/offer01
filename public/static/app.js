@@ -61,7 +61,15 @@ const App = {
     if (this.token && this.user) { this.showApp(); } else { this.showLogin(); }
     document.addEventListener('click', (e) => {
       const link = e.target.closest('[data-link]');
-      if (link) { e.preventDefault(); history.pushState(null, '', link.getAttribute('href')); this.route(); }
+      if (link) { e.preventDefault(); history.pushState(null, '', link.getAttribute('href')); this.route(); return; }
+
+      const actionEl = e.target.closest('[data-action]');
+      if (!actionEl) return;
+      const action = actionEl.getAttribute('data-action');
+      if (action === 'create-pdf-template') {
+        e.preventDefault();
+        this.createNewPdfTemplate();
+      }
     });
     window.addEventListener('popstate', () => this.route());
   },
@@ -1858,7 +1866,16 @@ const App = {
     });
   },
 
-  _escAttr(s) { return (s || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); },
+  _escHtml(s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  },
+
+  _escAttr(s) { return this._escHtml(s); },
 
   _addPaymentTerm() {
     const list = document.getElementById('payment-terms-list');
@@ -2230,7 +2247,7 @@ const App = {
             <h1 class="text-2xl font-bold text-gray-800"><i class="fas fa-file-contract ml-2 text-primary-500"></i>إدارة قوالب العروض</h1>
             <p class="text-gray-500 text-sm mt-1">أنشئ قوالب نصية لعروض الأتعاب واستخدمها عند تصدير PDF</p>
           </div>
-          <button onclick="App.createNewPdfTemplate()" class="bg-primary-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-primary-700 flex items-center gap-2 shadow-sm">
+          <button type="button" data-action="create-pdf-template" class="bg-primary-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-primary-700 flex items-center gap-2 shadow-sm">
             <i class="fas fa-plus"></i> قالب جديد
           </button>
         </div>
@@ -2259,7 +2276,7 @@ const App = {
           <div class="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4"><i class="fas fa-file-contract text-3xl text-amber-500"></i></div>
           <h3 class="text-lg font-medium text-gray-700 mb-2">لا توجد قوالب بعد</h3>
           <p class="text-gray-400 text-sm mb-6">أنشئ قالب نصي لعروض الأتعاب مع دعم المتغيرات <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs">{{variable}}</code></p>
-          <button onclick="App.createNewPdfTemplate()" class="bg-primary-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-primary-700"><i class="fas fa-plus ml-1"></i> إنشاء قالب</button>
+          <button type="button" data-action="create-pdf-template" class="bg-primary-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-primary-700"><i class="fas fa-plus ml-1"></i> إنشاء قالب</button>
         </div>
         ` : `
         <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
