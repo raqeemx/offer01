@@ -37,6 +37,57 @@ templates.post('/', async (c) => {
   return c.json(full, 201);
 });
 
+// نسخ قالب
+templates.post('/:id/duplicate', async (c) => {
+  const supabase = c.get('supabase') as any;
+  const user = c.get('user') as any;
+  const id = c.req.param('id');
+
+  const { data: original, error: originalError } = await supabase
+    .from('quote_templates')
+    .select('*, template_items(*)')
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .single();
+  if (originalError || !original) return c.json({ error: 'القالب غير موجود' }, 404);
+
+  const { data: duplicate, error: duplicateError } = await supabase
+    .from('quote_templates')
+    .insert({
+      user_id: user.id,
+      name: `${original.name} (نسخة)`,
+      description: original.description,
+      default_notes: original.default_notes,
+      default_valid_days: original.default_valid_days,
+      content: original.content || null,
+      variables_json: original.variables_json || null,
+      template_type: original.template_type || null,
+      service_type: original.service_type || null,
+      is_active: original.is_active ?? true,
+    })
+    .select()
+    .single();
+  if (duplicateError) return c.json({ error: duplicateError.message }, 500);
+
+  if (original.template_items?.length > 0) {
+    const items = original.template_items.map((item: any) => ({
+      template_id: duplicate.id,
+      description: item.description,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      sort_order: item.sort_order,
+    }));
+    await supabase.from('template_items').insert(items);
+  }
+
+  const { data: full } = await supabase
+    .from('quote_templates')
+    .select('*, template_items(*)')
+    .eq('id', duplicate.id)
+    .single();
+  return c.json(full, 201);
+});
+
 // تفاصيل قالب
 templates.get('/:id', async (c) => {
   const supabase = c.get('supabase') as any;
